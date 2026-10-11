@@ -30,7 +30,7 @@ Apple Silicon only, macOS 14/15+. Notarized direct-sale binary (own site, e.g. G
 
 ### 4.1 Components
 
-- **`MTatsPluginKit`** (framework): defines the `Plugin` protocol (bundle entry point / principal class, exposes `func makeWidgets() -> [Widget]`), the `Widget` protocol (id, a menu-bar SwiftUI view, a dropdown detail SwiftUI view, owns its own polling), the `Snapshot` value types per Widget kind, and the `pluginAPIVersion` integer constant. Both the Host and every Plugin link against this framework.
+- **`MTatsPluginKit`** (framework): defines the `Plugin` protocol (bundle entry point / principal class, exposes `static func makeWidgets() -> [Widget]`), the `Widget` protocol (id, displayName, `start()`/`stop()` lifecycle, a menu-bar `AnyView`, a dropdown detail `AnyView`), and the `pluginAPIVersion` integer constant. `Snapshot` types and the `MetricsSource` protocol that produces them are **not** part of this shared surface — they're internal to each concrete Widget's own implementation (see ADR-0005, CONTEXT.md). This split exists so a Widget's presentation logic is unit-testable with canned data, and so the Host can pause/resume a Widget via `stop()`/`start()` for per-widget enable/disable (§6) without destroying Plugin state. Both the Host and every Plugin link against this one framework, loaded as a single shared image per process — the Host loads it first at launch, and Plugins link against it weakly rather than embedding their own copy, so Swift runtime type identity for `Widget` stays consistent everywhere (ADR-0005).
 - **`mtats.app`** (Host): owns the `NSStatusItem`(s), a plugin discovery/loader service, the polling scheduler, Settings UI, and (future) license-key handling. Renders whatever Widgets the loaded Plugins expose — the Host has no built-in knowledge of CPU/RAM/GPU/Network beyond what it discovers at runtime.
 - **4 built-in Plugin targets**: `CPUWidget.bundle`, `RAMWidget.bundle`, `GPUWidget.bundle`, `NetworkWidget.bundle` — each its own Xcode target, embedded + code-signed into `mtats.app` via a Copy Files build phase, depending only on `MTatsPluginKit` + system frameworks (IOKit, Darwin/Mach, Network/URLSession).
 - **Example third-party plugin**: a separate repo (`mtats-example-plugin`), built and signed independently, implementing a trivial "hello world" Widget — exists only to prove the loading path, no real functionality.
@@ -47,7 +47,7 @@ Loading signed-but-not-same-Team-ID code requires `com.apple.security.cs.disable
 
 ### 4.3 Data flow
 
-Each Widget owns a polling actor that produces immutable `Snapshot`s on its own cadence. Both the menu-bar view and the dropdown detail view subscribe to the same Snapshot stream — nobody polls hardware twice, and nobody polls hardware from a view.
+The Host never touches a Snapshot or knows a Widget's data type — it only calls `start()`/`stop()` and renders the two views `Widget` returns. Inside each concrete Widget, a `MetricsSource` produces immutable Snapshots on its own cadence; the menu-bar view and the dropdown detail view both observe the same Snapshot stream (via an internal `ObservableObject`), so nobody polls hardware twice and nobody polls hardware from a view.
 
 ## 5. v1 Widgets — data sources
 
@@ -76,7 +76,7 @@ Open-core (ADR-0002): Host, `MTatsPluginKit`, and the 4 built-in Widgets are MIT
 ## 8. Build & evaluation process
 
 1. **Design** (this doc) — done.
-2. Feasibility spike (`mattpocock-skills:prototype`): validate end-to-end that a `.bundle` signed with a *different* identity than the Host can actually be loaded with library validation disabled, before the plan locks this architecture in as buildable-as-written.
+2. Feasibility spike (`mattpocock-skills:prototype`): validate end-to-end that (a) a `.bundle` signed with a *different* identity than the Host can be loaded with library validation disabled, and (b) a `Widget` instance produced by that separately-built bundle passes `as?` / protocol-conformance checks correctly in the Host process — i.e. that weak-linking `MTatsPluginKit` from the Plugin side actually resolves to the Host's single loaded copy rather than a duplicate image (ADR-0005). (b) is the real risk; (a) alone would pass even if type identity were broken.
 3. **Plan** (`writing-plans`), including a `mattpocock-skills:codebase-design` pressure-test specifically of the `Widget`/`Plugin` protocol split in §4.1 — the one seam every future Widget depends on.
 4. **Execution**: Claude Code implements against the plan, in an isolated workspace.
 5. **Verification loop**, repeated until all three hold, no round cap:
@@ -102,3 +102,4 @@ Open-core (ADR-0002): Host, `MTatsPluginKit`, and the 4 built-in Widgets are MIT
 - `docs/adr/0002-open-core-licensing.md`
 - `docs/adr/0003-apple-silicon-only-unsandboxed-distribution.md`
 - `docs/adr/0004-plugin-api-exact-version-match.md`
+- `docs/adr/0005-widget-protocol-split-and-shared-framework-identity.md`

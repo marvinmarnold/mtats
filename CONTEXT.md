@@ -25,5 +25,9 @@ A single monitoring capability a Plugin exposes to the Host: a menu-bar presenta
 _Avoid_: Plugin (see above), sensor, monitor
 
 **Snapshot**:
-An immutable, timestamped reading produced by a Widget's polling logic (e.g. a CPUSnapshot carrying per-core and total usage). The Host and the Widget's own views both consume Snapshots; neither polls hardware directly.
+An immutable, timestamped reading produced by a Widget's MetricsSource (e.g. a CPUSnapshot carrying per-core and total usage). Internal to each concrete Widget's own implementation — the Host never sees a Snapshot type directly, only the Widget's rendered views. See ADR-0005.
 _Avoid_: Reading, sample, metric (metric is fine as a general term for "the thing being measured," but the data point itself is a Snapshot)
+
+**MetricsSource**:
+The internal-only counterpart to a Widget that does the actual sensor reading and produces a stream of Snapshots on a cadence. Never crosses the Plugin↔Host seam; exists so a Widget's presentation logic can be tested with canned Snapshots instead of real hardware. See ADR-0005.
+_Avoid_: Poller, provider, sensor (sensor is fine informally, but the type name is MetricsSource)
