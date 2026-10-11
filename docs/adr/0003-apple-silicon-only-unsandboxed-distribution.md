@@ -1,0 +1,3 @@
+# Apple Silicon only, notarized, unsandboxed distribution
+
+v1 targets Apple Silicon Macs only on a recent macOS (14/15+), distributed as a notarized but non-sandboxed direct download (not the Mac App Store). Intel support was rejected to avoid doubling sensor-reading complexity (different SMC keys, discrete GPU handling) for a shrinking share of the market. The App Store was rejected because its sandbox blocks or cripples several of the sensor reads this app exists to show (SMC temps/fans especially) — the same reason none of the real competitors (iStat Menus, Stats, TG Pro) ship there. This is also a prerequisite for ADR-0001: a sandboxed app cannot load third-party dynamic plugins at all.

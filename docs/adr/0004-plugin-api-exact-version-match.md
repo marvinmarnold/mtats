@@ -1,0 +1,3 @@
+# Plugin API compatibility: exact version match, no negotiation
+
+`MTatsPluginKit` exposes a single integer `pluginAPIVersion`. Each Plugin declares the version it was built against in its `Info.plist`; the Host requires an exact match and skips (with a visible reason, never a crash) any Plugin whose declared version doesn't match the Host's. We rejected semantic versioning or any backward/forward-compatibility negotiation for v1 — with zero Plugins in the wild yet, there is nothing real to be compatible with, and designing a compatibility scheme now would be guessing. This is expected to need revisiting once multiple Plugin versions actually exist.

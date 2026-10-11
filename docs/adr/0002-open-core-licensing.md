@@ -1,0 +1,3 @@
+# Open-core licensing
+
+The Host, `MTatsPluginKit`, and the 4 built-in Widgets are MIT-licensed and public on GitHub from day one. Revenue comes from selling a signed/notarized pre-built binary for convenience, plus future paid Plugins/features gated by a license key. We considered a source-available/commercial license restricting use of the built app without payment, and fully open MIT with no gating at all (monetizing the binary only); open-core was chosen to keep the project genuinely open source (clean MIT, no usage restrictions) while still leaving a real commercial lever for future paid Plugins, at the cost of needing a license-key mechanism eventually.
