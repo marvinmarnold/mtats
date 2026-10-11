@@ -4,7 +4,7 @@
 
 **Goal:** Build mtats v1 — a native macOS menu bar system monitor with CPU/RAM/GPU/Network (+local/public IP) widgets, loaded through a real dynamic plugin architecture, to a sellable quality bar.
 
-**Architecture:** A Swift Package (`Package.swift`) at the repo root. `MTatsPluginKit` is a **dynamic** library target defining the `Widget`/`PluginEntry` protocol (crosses the Plugin↔Host seam, no associated types — ADR-0005). Each metric gets its own **static**, fully unit-testable `*Core` library target (pure calculation logic + a thin real-sensor wrapper + SwiftUI views). A manual packaging script compiles each Core into an actual loadable `.bundle` (NSPrincipalClass-based, exactly the mechanism validated in `spikes/plugin-loading-identity/`), and assembles the final `mtats.app`. No Xcode.app is required for any of this — `swift build`/`swift test` plus the packaging scripts cover the whole v1 build. Xcode/a paid Developer ID is only needed later, for notarized distribution (out of scope for this plan).
+**Architecture:** A Swift Package (`Package.swift`) at the repo root. `MTatsPluginKit` is a **dynamic** library target defining the `MTatsWidget`/`PluginEntry` protocol (crosses the Plugin↔Host seam, no associated types — ADR-0005). Each metric gets its own **static**, fully unit-testable `*Core` library target (pure calculation logic + a thin real-sensor wrapper + SwiftUI views). A manual packaging script compiles each Core into an actual loadable `.bundle` (NSPrincipalClass-based, exactly the mechanism validated in `spikes/plugin-loading-identity/`), and assembles the final `mtats.app`. No Xcode.app is required for any of this — `swift build`/`swift test` plus the packaging scripts cover the whole v1 build. Xcode/a paid Developer ID is only needed later, for notarized distribution (out of scope for this plan).
 
 **Tech Stack:** Swift 6, SwiftPM, AppKit (`NSStatusItem`) + SwiftUI (views), Foundation/Darwin (Mach APIs), IOKit, `Network`/`URLSession`.
 
@@ -18,7 +18,7 @@
 - `MTatsPluginKit` must build as `type: .dynamic` and nothing else may claim its install name — this is load-bearing per ADR-0005.
 - No Xcode.app or paid Developer ID required for Tasks 1-11. If one of those seems to need one, stop and re-read ADR-0005/the spike — it almost certainly doesn't. (Task 12, notarization, is the sole exception — see that task.)
 - MIT license: add a one-line `// SPDX-License-Identifier: MIT` at the top of every new source file.
-- A Plugin's `PluginEntry`-conforming class MUST subclass `NSObject` and carry an explicit `@objc(ExactName)` matching its Info.plist `NSPrincipalClass` string (how `Bundle.principalClass` finds it — ADR-0001/0005). This does NOT require the `Widget`/`PluginEntry` protocols themselves to be `@objc`.
+- A Plugin's `PluginEntry`-conforming class MUST subclass `NSObject` and carry an explicit `@objc(ExactName)` matching its Info.plist `NSPrincipalClass` string (how `Bundle.principalClass` finds it — ADR-0001/0005). This does NOT require the `MTatsWidget`/`PluginEntry` protocols themselves to be `@objc`.
 
 ## Review Focus
 
@@ -37,7 +37,7 @@ mtats/
   Package.swift
   Sources/
     MTatsPluginKit/
-      Widget.swift              # Widget, PluginEntry protocols, pluginAPIVersion
+      MTatsWidget.swift         # MTatsWidget, PluginEntry protocols, pluginAPIVersion
     CPUCore/
       CPUSnapshot.swift         # pure value type
       CPUCalculator.swift       # pure calc: ticks -> percentages
@@ -71,11 +71,13 @@ mtats/
 
 **Files:**
 - Create: `Package.swift`
-- Create: `Sources/MTatsPluginKit/Widget.swift`
+- Create: `Sources/MTatsPluginKit/MTatsWidget.swift`
 - Create: `spikes/anyview-principal-class/` (throwaway — see step 5; delete after this task, do not commit it to the real source tree)
 
 **Interfaces:**
-- Produces: `public protocol Widget: AnyObject { var id: String; var displayName: String; func start(interval: TimeInterval); func stop(); func menuBarView() -> AnyView; func detailView() -> AnyView }`, `public protocol PluginEntry: AnyObject { static func makeWidgets() -> [Widget] }`, `public protocol PublicIPToggleable: AnyObject { func setPublicIPLookupEnabled(_ enabled: Bool) }`, `public let pluginAPIVersion: Int = 1`.
+- Produces: `public protocol MTatsWidget: AnyObject { var id: String; var displayName: String; func start(interval: TimeInterval); func stop(); func menuBarView() -> AnyView; func detailView() -> AnyView }`, `public protocol PluginEntry: AnyObject { static func makeWidgets() -> [MTatsWidget] }`, `public protocol PublicIPToggleable: AnyObject { func setPublicIPLookupEnabled(_ enabled: Bool) }`, `public let pluginAPIVersion: Int = 1`.
+
+**Naming note:** the protocol is `MTatsWidget`, not the plan's original `Widget` — `import SwiftUI` already declares a public `Widget` protocol (WidgetKit), and since every concrete widget needs both SwiftUI (for its views) and this protocol, a bare `Widget` name collides the moment both are imported together. Discovered by actually compiling Step 5's fixture, not foreseeable from the spec/ADRs alone — ledgered as a ruling.
 
 - [ ] **Step 1: Create the package manifest**
 
@@ -113,18 +115,18 @@ let package = Package(
 - [ ] **Step 2: Run `swift build` to verify the empty package builds**
 
 Run: `swift build`
-Expected: builds successfully (targets have no source files yet except what you add in Step 3 — add an empty `Widget.swift` first if the build complains about a target with no sources).
+Expected: builds successfully (targets have no source files yet except what you add in Step 3 — add an empty `MTatsWidget.swift` first if the build complains about a target with no sources). In practice every other target (CPUCore, RAMCore, NetworkCore, GPUCore, mtats, and all 4 test targets) will ALSO have no sources yet and SwiftPM refuses to build with an empty target — add one minimal non-behavioral stub file per empty target (just the license header, or `print("mtats placeholder")` for the executable) before this step passes; each later task deletes its stub(s) once it adds real files.
 
 - [ ] **Step 3: Write the protocols**
 
 ```swift
-// Sources/MTatsPluginKit/Widget.swift
+// Sources/MTatsPluginKit/MTatsWidget.swift
 // SPDX-License-Identifier: MIT
 import SwiftUI
 
 /// Crosses the Plugin<->Host seam. No associated types (ADR-0005): a dynamically loaded
 /// plugin and the Host must agree on this exact, non-generic shape.
-public protocol Widget: AnyObject {
+public protocol MTatsWidget: AnyObject {
     var id: String { get }
     var displayName: String { get }
 
@@ -149,15 +151,15 @@ public protocol Widget: AnyObject {
 /// named via `@objc(ExactName)` matching the plugin bundle's Info.plist NSPrincipalClass key —
 /// that's how Bundle.principalClass finds it at runtime (ADR-0001, ADR-0005).
 public protocol PluginEntry: AnyObject {
-    static func makeWidgets() -> [Widget]
+    static func makeWidgets() -> [MTatsWidget]
 }
 
 /// Every Plugin bundle must declare this exact integer in its Info.plist under
 /// MTatsPluginAPIVersion. The Host rejects any mismatch (ADR-0004).
 public let pluginAPIVersion: Int = 1
 
-/// Optional, narrow extension a Widget can additionally conform to. Kept separate from
-/// `Widget` itself so the one widget that needs it (Network, for the public-IP toggle —
+/// Optional, narrow extension a MTatsWidget can additionally conform to. Kept separate from
+/// `MTatsWidget` itself so the one widget that needs it (Network, for the public-IP toggle —
 /// spec §6) doesn't force every other widget to carry an irrelevant requirement.
 public protocol PublicIPToggleable: AnyObject {
     func setPublicIPLookupEnabled(_ enabled: Bool)
@@ -171,7 +173,7 @@ Expected: PASS.
 
 - [ ] **Step 5: De-risk the one open question from ADR-0005 before building on top of it — can a plain (non-@objc) Swift protocol returning `AnyView`, implemented by an `NSObject` subclass, be discovered via `Bundle.principalClass` and cast successfully?**
 
-This extends the validated spike (`spikes/plugin-loading-identity/` on branch `spike/plugin-loading-identity`), which only tested a `String`-returning `@objc` protocol. `Widget` returns `AnyView`, which cannot be `@objc`. Build a throwaway fixture to confirm this works before any real widget code depends on it:
+This extends the validated spike (`spikes/plugin-loading-identity/` on branch `spike/plugin-loading-identity`), which only tested a `String`-returning `@objc` protocol. `MTatsWidget` returns `AnyView`, which cannot be `@objc`. Build a throwaway fixture to confirm this works before any real widget code depends on it:
 
 ```bash
 mkdir -p spikes/anyview-principal-class/{host,plugin}
@@ -203,7 +205,7 @@ import Foundation
 import SwiftUI
 import MTatsPluginKit
 
-@objc(FixtureWidget) class FixtureWidget: NSObject, Widget {
+@objc(FixtureWidget) class FixtureWidget: NSObject, MTatsWidget {
     let id = "fixture"
     let displayName = "Fixture"
     func start(interval: TimeInterval) {}
@@ -213,7 +215,7 @@ import MTatsPluginKit
 }
 
 @objc(FixturePluginMain) public class FixturePluginMain: NSObject, PluginEntry {
-    @objc public static func makeWidgets() -> [Widget] { [FixtureWidget()] }
+    public static func makeWidgets() -> [MTatsWidget] { [FixtureWidget()] }
 }
 ```
 
@@ -248,7 +250,9 @@ spikes/anyview-principal-class/host-bin "$PWD/spikes/anyview-principal-class/Fix
 
 Expected: prints `PASS`.
 
-**If it instead fails** (e.g. `NSClassFromString` can't find `FixturePluginMain`, or the metatype cast fails): make `PluginEntry` `@objc` after all (drop the `AnyView`-returning requirements out of the `@objc` protocol and keep only `static func makeWidgets() -> [AnyObject]`, with the Host doing `widget as? Widget` as a second, non-@objc cast on each returned instance — the spike already proved that second-stage cast works). Update this file and ADR-0005 with whichever variant actually passed before continuing to Task 2.
+**Verified result (ran this spike for real):** the first attempt failed to compile — `@objc public static func makeWidgets() -> [MTatsWidget]` errors with "result type cannot be represented in Objective-C", because `@objc` requires every type it touches to bridge to Objective-C, and `[MTatsWidget]` (an array of a plain Swift protocol existential) doesn't. The fix is simpler than the hypothetical fallback below: `@objc` was never needed on the *method*, only on the *class* (`@objc(FixturePluginMain)`), since `Bundle.principalClass`/`NSClassFromString` only needs the class discoverable by the Objective-C runtime — the metatype cast `principal as? PluginEntry.Type` and the method call are pure Swift and don't require `@objc` at all. Removing `@objc` from every `makeWidgets()` declaration (Tasks 1, 6, 11 all had this exact bug) fixes it; `PASS` confirmed after that fix. The code blocks throughout this plan already reflect the fix.
+
+*(Original fallback plan, not needed in practice, kept for reference: if this failed for a different reason — e.g. `NSClassFromString` can't find `FixturePluginMain`, or the metatype cast itself fails — make `PluginEntry` `@objc` after all, with only `static func makeWidgets() -> [AnyObject]`, and have the Host do `widget as? MTatsWidget` as a second, non-@objc cast on each returned instance.)*
 
 - [ ] **Step 6: Delete the throwaway fixture, keep only the result**
 
@@ -262,7 +266,7 @@ Record the verdict (which variant passed) as a one-line addendum to ADR-0005, th
 
 ```bash
 git add Package.swift Sources/MTatsPluginKit docs/adr/0005-widget-protocol-split-and-shared-framework-identity.md
-git commit -m "Add MTatsPluginKit Widget/PluginEntry protocols, verified against principalClass loading"
+git commit -m "Add MTatsPluginKit MTatsWidget/PluginEntry protocols, verified against principalClass loading"
 ```
 
 ---
@@ -1316,7 +1320,7 @@ git commit -m "Add GPUCore: performance-statistics parser (tested, degrades to N
 - Create: `Plugins/NetworkWidget/PluginMain.swift`, `Plugins/NetworkWidget/Info.plist`
 
 **Interfaces:**
-- Consumes: `Widget`/`PluginEntry` from Task 1; `CPUMetricsSource`/`CPUMenuBarView`/`CPUDetailView` from Task 2 (and the equivalent RAM/Network/GPU types from Tasks 3-5).
+- Consumes: `MTatsWidget`/`PluginEntry` from Task 1; `CPUMetricsSource`/`CPUMenuBarView`/`CPUDetailView` from Task 2 (and the equivalent RAM/Network/GPU types from Tasks 3-5).
 - Produces: four `.bundle` directories under `.build/plugins/`, each loadable exactly like the Task 1 fixture.
 
 - [ ] **Step 1: Write the packaging script, parameterized over the validated spike incantation**
@@ -1371,7 +1375,7 @@ import SwiftUI
 import MTatsPluginKit
 import CPUCore
 
-@objc(CPUWidgetAdapter) class CPUWidgetAdapter: NSObject, Widget {
+@objc(CPUWidgetAdapter) class CPUWidgetAdapter: NSObject, MTatsWidget {
     let id = "cpu"
     let displayName = "CPU"
     private let source = CPUMetricsSource()
@@ -1382,7 +1386,7 @@ import CPUCore
 }
 
 @objc(CPUPluginMain) public class CPUPluginMain: NSObject, PluginEntry {
-    @objc public static func makeWidgets() -> [Widget] { [CPUWidgetAdapter()] }
+    public static func makeWidgets() -> [MTatsWidget] { [CPUWidgetAdapter()] }
 }
 ```
 
@@ -1417,7 +1421,7 @@ import SwiftUI
 import MTatsPluginKit
 import RAMCore
 
-@objc(RAMWidgetAdapter) class RAMWidgetAdapter: NSObject, Widget {
+@objc(RAMWidgetAdapter) class RAMWidgetAdapter: NSObject, MTatsWidget {
     let id = "ram"
     let displayName = "RAM"
     private let source = RAMMetricsSource()
@@ -1428,7 +1432,7 @@ import RAMCore
 }
 
 @objc(RAMPluginMain) public class RAMPluginMain: NSObject, PluginEntry {
-    @objc public static func makeWidgets() -> [Widget] { [RAMWidgetAdapter()] }
+    public static func makeWidgets() -> [MTatsWidget] { [RAMWidgetAdapter()] }
 }
 ```
 
@@ -1457,7 +1461,7 @@ import SwiftUI
 import MTatsPluginKit
 import GPUCore
 
-@objc(GPUWidgetAdapter) class GPUWidgetAdapter: NSObject, Widget {
+@objc(GPUWidgetAdapter) class GPUWidgetAdapter: NSObject, MTatsWidget {
     let id = "gpu"
     let displayName = "GPU"
     private let source = GPUMetricsSource()
@@ -1468,7 +1472,7 @@ import GPUCore
 }
 
 @objc(GPUPluginMain) public class GPUPluginMain: NSObject, PluginEntry {
-    @objc public static func makeWidgets() -> [Widget] { [GPUWidgetAdapter()] }
+    public static func makeWidgets() -> [MTatsWidget] { [GPUWidgetAdapter()] }
 }
 ```
 
@@ -1499,7 +1503,7 @@ import SwiftUI
 import MTatsPluginKit
 import NetworkCore
 
-@objc(NetworkWidgetAdapter) class NetworkWidgetAdapter: NSObject, Widget, PublicIPToggleable {
+@objc(NetworkWidgetAdapter) class NetworkWidgetAdapter: NSObject, MTatsWidget, PublicIPToggleable {
     let id = "network"
     let displayName = "Network"
     private let source = NetworkMetricsSource()
@@ -1511,7 +1515,7 @@ import NetworkCore
 }
 
 @objc(NetworkPluginMain) public class NetworkPluginMain: NSObject, PluginEntry {
-    @objc public static func makeWidgets() -> [Widget] { [NetworkWidgetAdapter()] }
+    public static func makeWidgets() -> [MTatsWidget] { [NetworkWidgetAdapter()] }
 }
 ```
 
@@ -1546,8 +1550,8 @@ git commit -m "Add plugin packaging script and the 4 built-in widget plugin shim
 - Test: `Tests/mtatsTests/PluginLoaderTests.swift` (the parts that don't need real bundles — path/version logic; loading itself is exercised in Task 10's smoke test)
 
 **Interfaces:**
-- Consumes: `Widget`, `PluginEntry`, `pluginAPIVersion` from Task 1.
-- Produces: `public final class PluginLoader { public func loadAll(builtInDirectory: URL, userDirectory: URL) -> [Widget]; public static func isAPIVersionCompatible(infoDictionary: [String: Any]) -> Bool; public func hasValidSignature(bundlePath: URL) -> Bool; public func watchForNewPlugins(in: URL, onNewWidgets: @escaping ([Widget]) -> Void) -> PluginDirectoryWatcher }`, `public final class PluginDirectoryWatcher { public func start(); public func stop() }`
+- Consumes: `MTatsWidget`, `PluginEntry`, `pluginAPIVersion` from Task 1.
+- Produces: `public final class PluginLoader { public func loadAll(builtInDirectory: URL, userDirectory: URL) -> [MTatsWidget]; public static func isAPIVersionCompatible(infoDictionary: [String: Any]) -> Bool; public func hasValidSignature(bundlePath: URL) -> Bool; public func watchForNewPlugins(in: URL, onNewWidgets: @escaping ([MTatsWidget]) -> Void) -> PluginDirectoryWatcher }`, `public final class PluginDirectoryWatcher { public func start(); public func stop() }`
 
 - [ ] **Step 1: Write the failing test for the pure version-check logic**
 
@@ -1622,9 +1626,9 @@ public final class PluginLoader {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
-    public func loadAll(builtInDirectory: URL, userDirectory: URL) -> [Widget] {
+    public func loadAll(builtInDirectory: URL, userDirectory: URL) -> [MTatsWidget] {
         ensureDirectoryExists(userDirectory)
-        var widgets: [Widget] = []
+        var widgets: [MTatsWidget] = []
         for directory in [builtInDirectory, userDirectory] {
             guard let entries = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { continue }
             for entry in entries where entry.pathExtension == "bundle" {
@@ -1634,7 +1638,7 @@ public final class PluginLoader {
         return widgets
     }
 
-    private func load(bundleAt path: URL) -> [Widget] {
+    private func load(bundleAt path: URL) -> [MTatsWidget] {
         guard hasValidSignature(bundlePath: path) else {
             print("PluginLoader: skipping \(path.lastPathComponent) — invalid/missing signature")
             return []
@@ -1654,7 +1658,7 @@ public final class PluginLoader {
     /// spec §4.2: the third-party directory is watched so a new plugin loads without a
     /// relaunch. FSEventStream is a C API; wrap it in a small class so the closure-based
     /// callback has somewhere to route back into Swift.
-    public func watchForNewPlugins(in directory: URL, onNewWidgets: @escaping ([Widget]) -> Void) -> PluginDirectoryWatcher {
+    public func watchForNewPlugins(in directory: URL, onNewWidgets: @escaping ([MTatsWidget]) -> Void) -> PluginDirectoryWatcher {
         let watcher = PluginDirectoryWatcher(directory: directory) { [weak self] in
             guard let self, let entries = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
             let newWidgets = entries
@@ -1733,7 +1737,7 @@ git commit -m "Add PluginLoader: signature/version checks (tested), discovery, F
 - Test: `Tests/mtatsTests/SettingsStoreTests.swift`
 
 **Interfaces:**
-- Consumes: `Widget` from Task 1, `PluginLoader` from Task 7.
+- Consumes: `MTatsWidget` from Task 1, `PluginLoader` from Task 7.
 - Produces: a runnable `mtats` executable.
 
 - [ ] **Step 1: Write the failing test for settings persistence logic**
@@ -1835,7 +1839,7 @@ import MTatsPluginKit
 
 public final class StatusBarController {
     private var items: [NSStatusItem] = []
-    private var widgets: [Widget] = []
+    private var widgets: [MTatsWidget] = []
     private var settingsItem: NSStatusItem?
     private var settingsWindow: NSWindow?
     private let settings: SettingsStore
@@ -1847,7 +1851,7 @@ public final class StatusBarController {
     /// Call again with an expanded widget list (e.g. after the FSEvents watcher in
     /// PluginLoader reports a newly-installed third-party plugin) — existing items for
     /// widgets already presented are left alone; only genuinely new widgets get a new item.
-    public func present(widgets: [Widget]) {
+    public func present(widgets: [MTatsWidget]) {
         let alreadyPresentedIDs = Set(self.widgets.map(\.id))
         let newWidgets = widgets.filter { !alreadyPresentedIDs.contains($0.id) }
         self.widgets.append(contentsOf: newWidgets)
@@ -1946,10 +1950,10 @@ import MTatsPluginKit
 
 public struct SettingsView: View {
     @ObservedObject var settings: SettingsStore
-    let widgets: [Widget]
+    let widgets: [MTatsWidget]
     let onToggle: () -> Void
 
-    public init(settings: SettingsStore, widgets: [Widget], onToggle: @escaping () -> Void) {
+    public init(settings: SettingsStore, widgets: [MTatsWidget], onToggle: @escaping () -> Void) {
         self.settings = settings
         self.widgets = widgets
         self.onToggle = onToggle
@@ -2250,17 +2254,17 @@ import Foundation
 import SwiftUI
 import MTatsPluginKit
 
-@objc(HelloWidget) class HelloWidget: NSObject, Widget {
+@objc(HelloWidget) class HelloWidget: NSObject, MTatsWidget {
     let id = "hello-world-example"
     let displayName = "Hello World"
-    func start() {}
+    func start(interval: TimeInterval) {}
     func stop() {}
     func menuBarView() -> AnyView { AnyView(Text("👋").font(.system(size: 11))) }
     func detailView() -> AnyView { AnyView(Text("Hello from a genuinely third-party mtats plugin.").padding()) }
 }
 
 @objc(HelloPluginMain) public class HelloPluginMain: NSObject, PluginEntry {
-    @objc public static func makeWidgets() -> [Widget] { [HelloWidget()] }
+    public static func makeWidgets() -> [MTatsWidget] { [HelloWidget()] }
 }
 ```
 
