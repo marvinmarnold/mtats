@@ -1,0 +1,15 @@
+{
+  "name": "mtats-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/write-firebase-json.mjs && astro build && node scripts/check-dist.mjs",
+    "dev": "astro dev"
+  },
+  "dependencies": {
+    "astro": "7.3.5"
+  },
+  "devDependencies": {
+    "firebase-tools": "15.31.0"
+  }
+}

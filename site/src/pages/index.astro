@@ -1,0 +1,55 @@
+---
+// SPDX-License-Identifier: MIT
+// Resolved by Vite at build time, so a missing file (pre-first-release bootstrap) yields no entry
+// instead of an error. (import.meta.url would point into the bundle, not src/.)
+const files = import.meta.glob('../data/latest.json', { eager: true }) as Record<string, { default: any }>;
+const latest = Object.values(files)[0]?.default ?? null;
+const mb = latest ? (latest.sizeBytes / 1048576).toFixed(1) : null;
+const date = latest ? new Date(latest.publishedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : null;
+---
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mtats — Mac stats you wear on your sleeve</title>
+    <meta name="description" content="A menu-bar monitor for CPU, memory, GPU and network on Apple Silicon Macs." />
+  </head>
+  <body>
+    <header>
+      <h1>mtats</h1>
+      <p>Mac stats you wear on your sleeve.</p>
+      <p>A menu-bar monitor for CPU, memory, GPU and network. Apple Silicon, macOS 14 or later.</p>
+    </header>
+    <section aria-label="Menu bar preview" id="menubar"></section>
+    <section id="download">
+      {latest ? (
+        <>
+          <a href="/download">Download mtats {latest.version}</a>
+          <p>{mb} MB · macOS {latest.minimumSystemVersion} or later · {date}</p>
+          <p><a href={`https://github.com/marvinmarnold/mtats/releases/tag/v${latest.version}`}>Also on GitHub Releases</a></p>
+        </>
+      ) : (
+        <p>The first release is on its way.</p>
+      )}
+    </section>
+    <section id="install">
+      <h2>Install</h2>
+      <ol>
+        <li>Open the downloaded DMG.</li>
+        <li>Drag mtats to Applications.</li>
+        <li>Open mtats from Applications. It's notarized by Apple, so macOS opens it after the usual first-launch prompt.</li>
+      </ol>
+      <p>mtats lives in the menu bar and has no Dock icon. Updates arrive through the app itself.</p>
+    </section>
+    <section id="screenshots"></section>
+    <section id="privacy">
+      <h2>Privacy</h2>
+      <p>No telemetry, no crash reporting, no accounts. mtats makes two kinds of outbound request: a daily update check (you can turn it off in Settings) and an optional public-IP lookup (on by default, toggle in Settings). Plugins run with the app's privileges, and mtats asks before loading a third-party plugin for the first time.</p>
+    </section>
+    <footer>
+      <a href="https://github.com/marvinmarnold/mtats">Source on GitHub (MIT)</a> ·
+      <a href="https://github.com/marvinmarnold/mtats/releases">Releases</a>
+      {latest && <> · Current version {latest.version}</>}
+    </footer>
+  </body>
+</html>

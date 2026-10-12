@@ -1,0 +1,5 @@
+node_modules/
+dist/
+firebase.json
+src/data/latest.json
+.astro/

@@ -1,0 +1,3 @@
+{ "version": "0.1.0", "build": 1, "channel": "stable", "url": "https://mtats.app/releases/mtats-0.1.0.dmg",
+  "sizeBytes": 12582912, "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "publishedAt": "2026-10-12T00:00:00+00:00", "minimumSystemVersion": "14.0" }
