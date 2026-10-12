@@ -31,8 +31,4 @@ swiftc -emit-library -module-name "${NAME}Plugin" "${OPT[@]}" \
   ${RPATH[@]+"${RPATH[@]}"}
 
 cp "Plugins/${NAME}Widget/Info.plist" ".build/plugins/${NAME}Widget.bundle/Contents/Info.plist"
-# Ad-hoc seal so a standalone bundle verifies. `codesign --deep` on the app does not reach
-# Resources/Plugins, so without this the Host rejects built-ins as unsigned. Scripts/sign-app.sh
-# re-signs every bundle inside-out for packaging.
-codesign -s - --identifier "com.mtats.plugin.${NAME}" -f ".build/plugins/${NAME}Widget.bundle"
 echo "Built .build/plugins/${NAME}Widget.bundle ($CONFIG, principal class: $PRINCIPAL_CLASS)"

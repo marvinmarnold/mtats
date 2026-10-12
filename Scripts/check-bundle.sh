@@ -39,6 +39,7 @@ if (( SIGNED )); then
   ENT=$(codesign -d --entitlements - --xml "$APP" 2>/dev/null)
   [[ "$(grep -o '<key>[^<]*</key>' <<<"$ENT")" == "<key>com.apple.security.cs.disable-library-validation</key>" ]] \
     || fail "entitlements must be exactly disable-library-validation, got: $(grep -o '<key>[^<]*</key>' <<<"$ENT" | tr '\n' ' ')"
-  codesign -d --verbose=4 "$APP" 2>&1 | grep -q 'flags=.*runtime' || fail "hardened runtime flag missing"
+  SIGINFO=$(codesign -d --verbose=4 "$APP" 2>&1)
+  grep -q 'flags=.*runtime' <<<"$SIGINFO" || fail "hardened runtime flag missing"
 fi
 echo "check-bundle: OK ($APP)"

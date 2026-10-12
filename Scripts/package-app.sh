@@ -41,5 +41,5 @@ for widget in CPU RAM GPU Network; do
 done
 cp ".build/$CONFIG/libMTatsPluginKit.dylib" "$APP/Contents/Frameworks/"
 
-codesign -s - --identifier com.mtats.app --deep -f "$APP"
+Scripts/sign-app.sh "$APP"
 echo "Packaged $APP ($CONFIG)"
