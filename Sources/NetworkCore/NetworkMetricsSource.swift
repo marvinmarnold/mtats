@@ -72,7 +72,10 @@ public final class NetworkMetricsSource: ObservableObject {
         // torn-down source. Guard with a simple flag checked after the await.
         guard !isFetchingPublicIP else { return }
         isFetchingPublicIP = true
-        Task { [weak self] in
+        // @MainActor on the task itself (not just a hop after the await) ensures every
+        // mutation below — including this closure's own captures — runs on the main actor,
+        // since `latest`/`currentPublicIP` are @Published and observed by SwiftUI views.
+        Task { @MainActor [weak self] in
             let ip = await PublicIPFetcher.fetch()
             guard let self else { return }
             self.isFetchingPublicIP = false

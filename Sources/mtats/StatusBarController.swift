@@ -5,7 +5,7 @@ import SwiftUI
 import MTatsPluginKit
 
 public final class StatusBarController {
-    private var items: [NSStatusItem] = []
+    private var items: [String: NSStatusItem] = [:]
     private var widgets: [MTatsWidget] = []
     private var settingsItem: NSStatusItem?
     private var settingsWindow: NSWindow?
@@ -39,8 +39,10 @@ public final class StatusBarController {
             item.button?.action = #selector(PopoverShower.toggle(_:))
             PopoverShower.shared.register(button: item.button!, popover: popover)
 
-            items.append(item)
-            if settings.isEnabled(widgetID: widget.id) {
+            items[widget.id] = item
+            let enabled = settings.isEnabled(widgetID: widget.id)
+            item.isVisible = enabled
+            if enabled {
                 widget.start(interval: settings.refreshInterval)
             }
             if let toggleable = widget as? PublicIPToggleable {
@@ -51,9 +53,13 @@ public final class StatusBarController {
         if settingsItem == nil { presentSettingsMenuItem() }
     }
 
+    /// spec §6: disabling a Widget must make it disappear from the menu bar, not just stop
+    /// updating — a frozen, stale item left behind looks like a bug, not a disabled feature.
     public func applyEnabledState() {
         for widget in widgets {
-            if settings.isEnabled(widgetID: widget.id) {
+            let enabled = settings.isEnabled(widgetID: widget.id)
+            items[widget.id]?.isVisible = enabled
+            if enabled {
                 widget.start(interval: settings.refreshInterval)
             } else {
                 widget.stop()
