@@ -5,11 +5,13 @@ public struct GPUMenuBarView: View {
     @ObservedObject var source: GPUMetricsSource
     public init(source: GPUMetricsSource) { self.source = source }
     public var body: some View {
-        if let utilization = source.latest?.utilization {
-            Text(String(format: "GPU %.0f%%", utilization * 100)).font(.system(size: 11, design: .monospaced))
-        } else {
-            Text("GPU N/A").font(.system(size: 11, design: .monospaced))
+        HStack(spacing: 3) {
+            Image(systemName: "display")
+            Text(source.latest?.utilization.map { String(format: "%3.0f%%", $0 * 100) } ?? "  — ")
+                .monospacedDigit()
+                .frame(width: 30, alignment: .trailing)
         }
+        .font(.system(size: 11, weight: .medium))
     }
 }
 
@@ -17,13 +19,19 @@ public struct GPUDetailView: View {
     @ObservedObject var source: GPUMetricsSource
     public init(source: GPUMetricsSource) { self.source = source }
     public var body: some View {
-        VStack(alignment: .leading) {
-            Text("GPU").font(.headline)
+        VStack(alignment: .leading, spacing: 8) {
+            Label("GPU", systemImage: "display").font(.headline)
             if let utilization = source.latest?.utilization {
-                Text(String(format: "Utilization: %.0f%%", utilization * 100))
+                Text(String(format: "Utilization  %.0f%%", utilization * 100)).monospacedDigit()
             } else {
-                Text("Utilization: N/A")
+                Text("Not reported on this Mac.")
+                Text("macOS did not expose GPU counters here. This is common inside virtual machines, which use a virtual GPU. It can also happen after a macOS update changes the counter name.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-        }.padding()
+        }
+        .padding(12)
+        .frame(width: 260, alignment: .leading)
     }
 }

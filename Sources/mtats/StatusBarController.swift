@@ -52,7 +52,11 @@ public final class StatusBarController {
             fit()
 
             let popover = NSPopover()
-            popover.contentViewController = NSHostingController(rootView: widget.detailView())
+            let detail = NSHostingController(rootView: widget.detailView())
+            // Let the popover take the detail view's size, so content isn't clipped and the
+            // arrow sits over the status item instead of drifting to a fixed default size.
+            detail.sizingOptions = [.preferredContentSize]
+            popover.contentViewController = detail
             popover.behavior = .transient
             button.target = PopoverShower.shared
             button.action = #selector(PopoverShower.toggle(_:))
