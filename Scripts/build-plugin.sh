@@ -3,33 +3,36 @@
 # SPDX-License-Identifier: MIT
 set -euo pipefail
 
-# Usage: build-plugin.sh <WidgetName> <PrincipalClassName>
-# Builds Plugins/<WidgetName>/PluginMain.swift into .build/plugins/<WidgetName>Widget.bundle,
-# linking against the Core library for <WidgetName> and the shared MTatsPluginKit — exactly
-# the mechanism validated in spikes/plugin-loading-identity/.
+# Usage: build-plugin.sh <WidgetName> <PrincipalClassName> [debug|release]
+# Builds Plugins/<WidgetName>Widget/PluginMain.swift into .build/plugins/<WidgetName>Widget.bundle,
+# linking against the Core library for <WidgetName> and the shared MTatsPluginKit.
+# package-app.sh runs `swift build` for the configuration first.
 
-NAME="$1"              # e.g. CPU
-PRINCIPAL_CLASS="$2"   # e.g. CPUPluginMain
-
-# Same backend as package-app.sh, so .build/debug points at the same products.
-swift build --build-system swiftbuild # ensure MTatsPluginKit + <NAME>Core are up to date
+NAME="$1"
+PRINCIPAL_CLASS="$2"
+CONFIG="${3:-debug}"
+case "$CONFIG" in debug) OPT=(-Onone -g) ;; release) OPT=(-O) ;; *) echo "configuration must be debug or release" >&2; exit 2 ;; esac
 
 OUT_DIR=".build/plugins/${NAME}Widget.bundle/Contents/MacOS"
+rm -rf ".build/plugins/${NAME}Widget.bundle"
 mkdir -p "$OUT_DIR"
 
-swiftc -emit-library -module-name "${NAME}Plugin" \
-  -I .build/debug -L .build/debug -l"MTatsPluginKit" -l"${NAME}Core" \
+RPATH=()
+if [[ "$CONFIG" == debug ]]; then
+  # Dev only: lets a bundle in .build/plugins find .build/debug when loaded standalone.
+  # Inside mtats.app dyld matches the install name against the Host's copy first (ADR-0005).
+  RPATH=(-Xlinker -rpath -Xlinker "@loader_path/../../../../debug")
+fi
+
+swiftc -emit-library -module-name "${NAME}Plugin" "${OPT[@]}" \
+  -I ".build/$CONFIG" -L ".build/$CONFIG" -l"MTatsPluginKit" -l"${NAME}Core" \
   "Plugins/${NAME}Widget/PluginMain.swift" \
   -o "$OUT_DIR/${NAME}Widget" \
-  -Xlinker -rpath -Xlinker "@loader_path/../../../../debug"
-  # $OUT_DIR is .build/plugins/<Name>Widget.bundle/Contents/MacOS — 4 levels up from
-  # there lands back at .build/, so appending "debug" (not ".build/debug") reaches
-  # .build/debug. Verify with: cd "$OUT_DIR" && cd ../../../../debug && pwd
-  # Once copied into mtats.app this rpath points nowhere, and that's fine: dyld matches the
-  # @rpath/libMTatsPluginKit.dylib install name against the copy the Host already loaded
-  # before it consults rpaths at all (ADR-0005).
+  ${RPATH[@]+"${RPATH[@]}"}
 
 cp "Plugins/${NAME}Widget/Info.plist" ".build/plugins/${NAME}Widget.bundle/Contents/Info.plist"
+# Ad-hoc seal so a standalone bundle verifies. `codesign --deep` on the app does not reach
+# Resources/Plugins, so without this the Host rejects built-ins as unsigned. Scripts/sign-app.sh
+# re-signs every bundle inside-out for packaging.
 codesign -s - --identifier "com.mtats.plugin.${NAME}" -f ".build/plugins/${NAME}Widget.bundle"
-
-echo "Built .build/plugins/${NAME}Widget.bundle (principal class: $PRINCIPAL_CLASS)"
+echo "Built .build/plugins/${NAME}Widget.bundle ($CONFIG, principal class: $PRINCIPAL_CLASS)"
