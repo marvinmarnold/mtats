@@ -24,5 +24,6 @@ let package = Package(
         .target(name: "GPUCore", dependencies: ["MTatsPluginKit"]),
         .testTarget(name: "GPUCoreTests", dependencies: ["GPUCore"]),
         .executableTarget(name: "mtats", dependencies: ["MTatsPluginKit"]),
+        .testTarget(name: "mtatsTests", dependencies: ["mtats", "MTatsPluginKit"]),
     ]
 )
