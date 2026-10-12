@@ -16,10 +16,12 @@ public final class StatusBarController: NSObject {
     private var settingsWindow: NSWindow?
     private let settings: SettingsStore
     private let loader: PluginLoader
+    private let updateControls: UpdateControls?
 
-    public init(settings: SettingsStore, loader: PluginLoader) {
+    public init(settings: SettingsStore, loader: PluginLoader, updateControls: UpdateControls? = nil) {
         self.settings = settings
         self.loader = loader
+        self.updateControls = updateControls
         super.init()
     }
 
@@ -111,7 +113,7 @@ public final class StatusBarController: NSObject {
     }
 
     private func makeSettingsView() -> SettingsView {
-        SettingsView(settings: settings, widgets: widgets, loader: loader, onToggle: { [weak self] in self?.applyEnabledState() })
+        SettingsView(settings: settings, widgets: widgets, loader: loader, updateControls: updateControls, onToggle: { [weak self] in self?.applyEnabledState() })
     }
 
     /// spec §6 requires Settings to actually be reachable. A small "⚙" status item is the
