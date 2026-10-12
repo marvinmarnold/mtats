@@ -31,4 +31,36 @@ final class PluginLoaderTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: pluginsDir.path, isDirectory: &isDirectory))
         XCTAssertTrue(isDirectory.boolValue)
     }
+
+    // spec §4.2: third-party plugins get a one-time warning naming the signing identity
+    // before first load — "one-time" persists across launches, so it's backed by UserDefaults
+    // like SettingsStore, not an in-memory Set that resets every run.
+    func test_newThirdPartyPlugin_hasNotBeenWarnedAboutYet() {
+        let loader = PluginLoader(defaults: UserDefaults(suiteName: "mtats.tests.\(UUID())")!)
+        XCTAssertFalse(loader.hasWarnedAboutThirdPartyPlugin(identifier: "com.example.plugin"))
+    }
+
+    func test_markingAThirdPartyPluginWarned_persists() {
+        let defaults = UserDefaults(suiteName: "mtats.tests.\(UUID())")!
+        let loader = PluginLoader(defaults: defaults)
+        loader.markWarnedAboutThirdPartyPlugin(identifier: "com.example.plugin")
+        XCTAssertTrue(loader.hasWarnedAboutThirdPartyPlugin(identifier: "com.example.plugin"))
+        let reloaded = PluginLoader(defaults: defaults)
+        XCTAssertTrue(reloaded.hasWarnedAboutThirdPartyPlugin(identifier: "com.example.plugin"))
+    }
+
+    func test_differentThirdPartyPlugin_isTrackedIndependently() {
+        let defaults = UserDefaults(suiteName: "mtats.tests.\(UUID())")!
+        let loader = PluginLoader(defaults: defaults)
+        loader.markWarnedAboutThirdPartyPlugin(identifier: "com.example.pluginA")
+        XCTAssertFalse(loader.hasWarnedAboutThirdPartyPlugin(identifier: "com.example.pluginB"))
+    }
+
+    // spec §4.2: rejected plugins (bad signature, API-version mismatch) get "a visible reason
+    // in a diagnostics view" — tracked here as a published message list the Host can display,
+    // since console prints are invisible in a GUI LSUIElement app with no attached terminal.
+    func test_diagnosticMessages_startsEmpty() {
+        let loader = PluginLoader()
+        XCTAssertTrue(loader.diagnosticMessages.isEmpty)
+    }
 }

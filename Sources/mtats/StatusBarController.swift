@@ -10,9 +10,11 @@ public final class StatusBarController {
     private var settingsItem: NSStatusItem?
     private var settingsWindow: NSWindow?
     private let settings: SettingsStore
+    private let loader: PluginLoader
 
-    public init(settings: SettingsStore) {
+    public init(settings: SettingsStore, loader: PluginLoader) {
         self.settings = settings
+        self.loader = loader
     }
 
     /// Call again with an expanded widget list (e.g. after the FSEvents watcher in
@@ -75,8 +77,8 @@ public final class StatusBarController {
 
     @objc private func openSettings() {
         if settingsWindow == nil {
-            let view = SettingsView(settings: settings, widgets: widgets, onToggle: { [weak self] in self?.applyEnabledState() })
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 240), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            let view = SettingsView(settings: settings, widgets: widgets, loader: loader, onToggle: { [weak self] in self?.applyEnabledState() })
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 280), styleMask: [.titled, .closable], backing: .buffered, defer: false)
             window.title = "mtats Settings"
             window.contentView = NSHostingView(rootView: view)
             window.isReleasedWhenClosed = false
