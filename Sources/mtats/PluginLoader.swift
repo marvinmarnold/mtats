@@ -12,6 +12,19 @@ public final class PluginLoader: ObservableObject {
     /// actually render. This is that something.
     @Published public private(set) var diagnosticMessages: [String] = []
 
+    /// One current reason per bundle filename. FSEvents re-scans the whole directory on any
+    /// change, so appending blindly would pile up duplicates; and a bundle that failed mid-copy
+    /// then loaded on a later event shouldn't leave a stale message behind.
+    private var diagnosticsByBundle: [String: String] = [:] {
+        didSet { diagnosticMessages = diagnosticsByBundle.keys.sorted().compactMap { diagnosticsByBundle[$0] } }
+    }
+
+    /// Bundles already loaded, declined, or currently being prompted for this session. Keeps a
+    /// declined plugin from re-prompting on every unrelated directory event, and keeps a
+    /// reentrant FSEvent delivered during the trust alert's modal loop from opening a second
+    /// alert for the same bundle. Declines are session-scoped: the next launch asks again.
+    private var handledBundlePaths: Set<String> = []
+
     private let defaults: UserDefaults
 
     public init(defaults: UserDefaults = .standard) {
@@ -88,46 +101,54 @@ public final class PluginLoader: ObservableObject {
         ensureDirectoryExists(userDirectory)
         var widgets: [MTatsWidget] = []
         for (directory, isThirdParty) in [(builtInDirectory, false), (userDirectory, true)] {
-            guard let entries = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { continue }
-            for entry in entries where entry.pathExtension == "bundle" {
+            for entry in bundles(in: directory) {
                 widgets.append(contentsOf: load(bundleAt: entry, isThirdParty: isThirdParty, warnBeforeFirstThirdPartyLoad: warnBeforeFirstThirdPartyLoad))
             }
         }
         return widgets
     }
 
-    /// `warnBeforeFirstThirdPartyLoad` returns whether to proceed — a user who declines
-    /// isn't asked again next launch; refusing is remembered no more durably than accepting
-    /// would need to be undone, so the next load attempt (relaunch, or a later hot-load
-    /// event) simply asks again rather than permanently blacklisting the plugin.
+    /// Sorted, because contentsOfDirectory's order is unspecified and it becomes menu-bar order.
+    private func bundles(in directory: URL) -> [URL] {
+        guard let entries = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return [] }
+        return entries.filter { $0.pathExtension == "bundle" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    /// `warnBeforeFirstThirdPartyLoad` returns whether to proceed. A decline is remembered for
+    /// this session only (see `handledBundlePaths`) — the next launch asks again rather than
+    /// permanently blacklisting the plugin.
     private func load(bundleAt path: URL, isThirdParty: Bool, warnBeforeFirstThirdPartyLoad: (String) -> Bool) -> [MTatsWidget] {
+        let name = path.lastPathComponent
+        guard !handledBundlePaths.contains(path.path) else { return [] }
         guard hasValidSignature(bundlePath: path) else {
-            diagnosticMessages.append("Skipped \(path.lastPathComponent): invalid or missing signature")
+            diagnosticsByBundle[name] = "Skipped \(name): invalid or missing signature"
             return []
         }
         guard let bundle = Bundle(url: path), let info = bundle.infoDictionary,
               Self.isAPIVersionCompatible(infoDictionary: info) else {
-            diagnosticMessages.append("Skipped \(path.lastPathComponent): incompatible or unreadable plugin API version")
+            diagnosticsByBundle[name] = "Skipped \(name): incompatible or unreadable plugin API version"
             return []
         }
+        handledBundlePaths.insert(path.path)
         if isThirdParty {
             // Keyed on the signed code's own hash, not the plugin's self-declared
             // CFBundleIdentifier (see codeUniqueIdentifier's doc comment) — falls back to the
             // bundle identifier only if the signing info is unexpectedly unreadable, which
             // can't happen once hasValidSignature above has already succeeded.
-            let warnKey = codeUniqueIdentifier(bundlePath: path) ?? (info["CFBundleIdentifier"] as? String) ?? path.lastPathComponent
+            let warnKey = codeUniqueIdentifier(bundlePath: path) ?? (info["CFBundleIdentifier"] as? String) ?? name
             if !hasWarnedAboutThirdPartyPlugin(identifier: warnKey) {
                 guard warnBeforeFirstThirdPartyLoad(signingIdentity(bundlePath: path)) else {
-                    diagnosticMessages.append("Skipped \(path.lastPathComponent): declined at the third-party load warning")
+                    diagnosticsByBundle[name] = "Skipped \(name): declined at the third-party load warning"
                     return []
                 }
                 markWarnedAboutThirdPartyPlugin(identifier: warnKey)
             }
         }
         guard bundle.load(), let principal = bundle.principalClass as? PluginEntry.Type else {
-            diagnosticMessages.append("Skipped \(path.lastPathComponent): failed to load or find PluginEntry")
+            diagnosticsByBundle[name] = "Skipped \(name): failed to load or find PluginEntry"
             return []
         }
+        diagnosticsByBundle[name] = nil
         return principal.makeWidgets()
     }
 
@@ -136,9 +157,8 @@ public final class PluginLoader: ObservableObject {
     /// callback has somewhere to route back into Swift.
     public func watchForNewPlugins(in directory: URL, warnBeforeFirstThirdPartyLoad: @escaping (String) -> Bool = { _ in true }, onNewWidgets: @escaping ([MTatsWidget]) -> Void) -> PluginDirectoryWatcher {
         let watcher = PluginDirectoryWatcher(directory: directory) { [weak self] in
-            guard let self, let entries = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
-            let newWidgets = entries
-                .filter { $0.pathExtension == "bundle" }
+            guard let self else { return }
+            let newWidgets = self.bundles(in: directory)
                 .flatMap { self.load(bundleAt: $0, isThirdParty: true, warnBeforeFirstThirdPartyLoad: warnBeforeFirstThirdPartyLoad) }
             if !newWidgets.isEmpty { onNewWidgets(newWidgets) }
         }

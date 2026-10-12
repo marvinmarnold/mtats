@@ -49,6 +49,8 @@ if (( $(echo "$CPU_PCT > 5.0" | bc -l) )); then
   echo "FAIL: CPU usage ${CPU_PCT}% exceeds the budget (spec allows ~1%, failing above 5% to allow for the ps sampling window)"
   exit 1
 fi
+# Debug builds currently measure ~52MB, a little over spec §5's ~40-50MB target; the 80MB
+# line catches regressions, not that gap. Re-measure against a release build (Task 12).
 if (( RSS_MB > 80 )); then
   echo "FAIL: RSS ${RSS_MB}MB exceeds the budget (spec targets ~40-50MB, failing above 80MB)"
   exit 1

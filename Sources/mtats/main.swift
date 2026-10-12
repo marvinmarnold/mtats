@@ -6,12 +6,6 @@ import Foundation
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory) // menu-bar only, no Dock icon
 
-let settings = SettingsStore()
-let loader = PluginLoader()
-let builtInDirectory = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Plugins")
-let userDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    .appendingPathComponent("mtats/Plugins")
-
 /// smoke-test.sh asserts plugins actually load — a real, unattended `NSAlert.runModal()`
 /// would hang that script forever the moment any third-party plugin is installed on the
 /// machine running it (as HelloWidget.bundle genuinely is, from Task 11's dogfood proof).
@@ -25,6 +19,23 @@ if isSmokeTest {
     setbuf(stdout, nil)
 }
 
+/// The smoke test auto-approves third-party plugins, and the loader persists approvals. In
+/// the real `com.mtats.app` defaults that would silently grant permanent trust the user never
+/// gave, so a smoke run gets its own throwaway domain, wiped at the start of every run (which
+/// also keeps the user's own widget/interval settings from affecting the result).
+let smokeTestDefaultsDomain = "com.mtats.app.smoke-test"
+let defaults: UserDefaults = {
+    guard isSmokeTest else { return .standard }
+    UserDefaults.standard.removePersistentDomain(forName: smokeTestDefaultsDomain)
+    return UserDefaults(suiteName: smokeTestDefaultsDomain)!
+}()
+
+let settings = SettingsStore(defaults: defaults)
+let loader = PluginLoader(defaults: defaults)
+let builtInDirectory = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Plugins")
+let userDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    .appendingPathComponent("mtats/Plugins")
+
 /// spec §4.2: third-party plugins get a one-time warning naming the signing identity
 /// before first load — shown synchronously, before that plugin's code ever runs. Returns
 /// whether to proceed: a user who reads "runs with the same access to your Mac as mtats
@@ -34,8 +45,9 @@ func warnBeforeFirstThirdPartyLoad(identity: String) -> Bool {
         print("SMOKE_TEST_AUTO_APPROVED_THIRD_PARTY: \(identity)")
         return true
     }
-    NSApp.activate(ignoringOtherApps: true) // this fires before any status item exists — without
-    // activating, the alert can open behind other windows and look like a stalled launch.
+    // This fires before any status item exists — without activating, the alert can open
+    // behind other windows and look like a stalled launch.
+    NSApp.activate()
     let alert = NSAlert()
     alert.messageText = "New third-party plugin"
     alert.informativeText = "A plugin signed by \"\(identity)\" wants to load for the first time. Third-party plugins run with the same access to your Mac as mtats itself."

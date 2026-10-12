@@ -1,4 +1,5 @@
 // Tests/mtatsTests/SettingsStoreTests.swift
+// SPDX-License-Identifier: MIT
 import XCTest
 import Combine
 @testable import mtats

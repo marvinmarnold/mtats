@@ -1,4 +1,5 @@
 // Tests/mtatsTests/PluginLoaderTests.swift
+// SPDX-License-Identifier: MIT
 import XCTest
 @testable import mtats
 import MTatsPluginKit
@@ -62,5 +63,27 @@ final class PluginLoaderTests: XCTestCase {
     func test_diagnosticMessages_startsEmpty() {
         let loader = PluginLoader()
         XCTAssertTrue(loader.diagnosticMessages.isEmpty)
+    }
+
+    // FSEvents re-scans the whole directory on any change (even Finder writing .DS_Store), so a
+    // rejected bundle gets re-checked repeatedly — it must not pile up duplicate messages.
+    func test_unsignedBundle_isSkippedWithOneDiagnostic_evenWhenScannedRepeatedly() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let builtIn = root.appendingPathComponent("builtin")
+        let user = root.appendingPathComponent("user")
+        try FileManager.default.createDirectory(at: user.appendingPathComponent("Unsigned.bundle/Contents"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: builtIn, withIntermediateDirectories: true)
+
+        let loader = PluginLoader(defaults: UserDefaults(suiteName: "mtats.tests.\(UUID())")!)
+        var warned = false
+        let warn: (String) -> Bool = { _ in warned = true; return true }
+
+        XCTAssertTrue(loader.loadAll(builtInDirectory: builtIn, userDirectory: user, warnBeforeFirstThirdPartyLoad: warn).isEmpty)
+        XCTAssertTrue(loader.loadAll(builtInDirectory: builtIn, userDirectory: user, warnBeforeFirstThirdPartyLoad: warn).isEmpty)
+
+        XCTAssertEqual(loader.diagnosticMessages.count, 1)
+        XCTAssertTrue(loader.diagnosticMessages[0].contains("Unsigned.bundle"))
+        XCTAssertFalse(warned, "an unsigned bundle is rejected outright — no trust prompt (spec §4.2)")
     }
 }

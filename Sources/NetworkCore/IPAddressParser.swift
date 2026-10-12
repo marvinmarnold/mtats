@@ -34,6 +34,8 @@ public struct IPAddressParser {
                 // Exclude loopback from the throughput total — a reasonable person watching
                 // "network usage" doesn't expect local-only traffic (dev servers, Docker,
                 // databases) counted as network activity.
+                // `if_data.ifi_ibytes`/`ifi_obytes` are u_int32_t and wrap at 4 GiB — see the
+                // known-limitation note in ThroughputCalculator before changing this.
                 if family == UInt8(AF_LINK), (flags & IFF_LOOPBACK) == 0, let data = current.pointee.ifa_data {
                     let networkData = data.withMemoryRebound(to: if_data.self, capacity: 1) { $0.pointee }
                     countersByName[name] = (rx: UInt64(networkData.ifi_ibytes), tx: UInt64(networkData.ifi_obytes))

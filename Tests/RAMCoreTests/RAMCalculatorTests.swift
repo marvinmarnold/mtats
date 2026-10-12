@@ -1,4 +1,5 @@
 // Tests/RAMCoreTests/RAMCalculatorTests.swift
+// SPDX-License-Identifier: MIT
 import XCTest
 @testable import RAMCore
 import Darwin

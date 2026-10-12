@@ -1,4 +1,5 @@
 // Tests/CPUCoreTests/CPUCalculatorTests.swift
+// SPDX-License-Identifier: MIT
 import XCTest
 @testable import CPUCore
 import Darwin

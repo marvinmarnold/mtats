@@ -1,4 +1,5 @@
 // Tests/NetworkCoreTests/ThroughputCalculatorTests.swift
+// SPDX-License-Identifier: MIT
 import XCTest
 @testable import NetworkCore
 
@@ -33,6 +34,16 @@ final class ThroughputCalculatorTests: XCTestCase {
         let result = ThroughputCalculator.throughput(previous: previous, current: current, elapsed: 1.0)
         XCTAssertEqual(result.perInterface.count, 1)
         XCTAssertNil(result.perInterface["utun0"])
+    }
+
+    // ThroughputCalculator is public API; a caller handing it two counters with the same
+    // interface name must not crash the Host.
+    func test_duplicateInterfaceNamesInPrevious_doNotTrap() {
+        let previous = [InterfaceCounters(name: "en0", rxBytes: 100, txBytes: 100),
+                        InterfaceCounters(name: "en0", rxBytes: 150, txBytes: 150)]
+        let current = [InterfaceCounters(name: "en0", rxBytes: 200, txBytes: 200)]
+        let result = ThroughputCalculator.throughput(previous: previous, current: current, elapsed: 1.0)
+        XCTAssertEqual(result.perInterface.count, 1)
     }
 
     func test_zeroElapsed_doesNotDivideByZero() {

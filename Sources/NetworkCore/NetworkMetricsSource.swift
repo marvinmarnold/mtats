@@ -3,6 +3,7 @@ import Foundation
 
 public final class NetworkMetricsSource: ObservableObject {
     @Published public private(set) var latest: NetworkSnapshot?
+    @Published public private(set) var publicIPLookupEnabled = true
 
     private var timer: Timer?
     private var publicIPTimer: Timer?
@@ -10,21 +11,26 @@ public final class NetworkMetricsSource: ObservableObject {
     private var previousTimestamp: Date?
     private var currentPublicIP: String?
     private var isFetchingPublicIP = false
-    private var publicIPLookupEnabled = true
 
     public init() {}
 
+    /// Restarting at a new interval only restarts sampling — the public-IP timer keeps its
+    /// 5-minute cadence (spec §5) instead of re-hitting the service on every settings change.
     public func start(interval: TimeInterval = 1.0) {
-        stop()
+        stopSampling()
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in self?.tick() }
         RunLoop.main.add(timer!, forMode: .common)
         tick()
-        restartPublicIPTimerIfEnabled()
+        if publicIPTimer == nil { restartPublicIPTimerIfEnabled() }
     }
 
     public func stop() {
-        timer?.invalidate(); timer = nil
+        stopSampling()
         publicIPTimer?.invalidate(); publicIPTimer = nil
+    }
+
+    private func stopSampling() {
+        timer?.invalidate(); timer = nil
         previousCounters = nil
         previousTimestamp = nil
     }
@@ -38,6 +44,9 @@ public final class NetworkMetricsSource: ObservableObject {
     /// independently toggleable. Reflected immediately: turning it off cancels any pending
     /// timer; turning it on restarts it and fetches right away.
     public func setPublicIPLookupEnabled(_ enabled: Bool) {
+        // The Host re-applies this on every settings change; only an actual change may
+        // trigger a lookup.
+        guard enabled != publicIPLookupEnabled else { return }
         publicIPLookupEnabled = enabled
         if enabled {
             restartPublicIPTimerIfEnabled()

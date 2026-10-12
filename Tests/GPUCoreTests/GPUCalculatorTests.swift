@@ -1,4 +1,5 @@
 // Tests/GPUCoreTests/GPUCalculatorTests.swift
+// SPDX-License-Identifier: MIT
 import XCTest
 @testable import GPUCore
 
@@ -20,6 +21,13 @@ final class GPUCalculatorTests: XCTestCase {
     func test_wrongValueType_returnsNilNotCrashing() {
         let dict: [String: Any] = ["Device Utilization %": "not a number"]
         XCTAssertNil(GPUCalculator.utilization(fromPerformanceStatistics: dict))
+    }
+
+    // Undocumented IOKit values can be out of range across driver versions; the menu bar must
+    // never show "GPU 150%" or a negative number.
+    func test_outOfRangeValues_areClampedToZeroThroughOne() {
+        XCTAssertEqual(GPUCalculator.utilization(fromPerformanceStatistics: ["Device Utilization %": 150]), 1.0)
+        XCTAssertEqual(GPUCalculator.utilization(fromPerformanceStatistics: ["Device Utilization %": -5]), 0.0)
     }
 
     func test_emptyDictionary_returnsNil() {

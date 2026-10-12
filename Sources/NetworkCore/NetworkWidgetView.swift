@@ -22,11 +22,17 @@ public struct NetworkDetailView: View {
             Text("Network").font(.headline)
             if let s = source.latest {
                 Text("Local IP: \(s.localIPv4 ?? "unavailable")")
-                Text("Public IP: \(s.publicIP ?? "unavailable")")
+                if source.publicIPLookupEnabled {
+                    Text("Public IP: \(s.publicIP ?? "unavailable")")
+                } else {
+                    Text("Public IP: lookup off (Settings)")
+                }
                 ForEach(Array(s.perInterface.keys.sorted()), id: \.self) { name in
                     Text("\(name): \(formatRate(s.perInterface[name] ?? 0))")
                 }
-                Button("Refresh public IP") { source.refreshPublicIPNow() }
+                if source.publicIPLookupEnabled {
+                    Button("Refresh public IP") { source.refreshPublicIPNow() }
+                }
             } else {
                 Text("Waiting for data...")
             }
