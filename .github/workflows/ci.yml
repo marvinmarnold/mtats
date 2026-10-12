@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: MIT
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  build-test:
+    runs-on: ${{ vars.MTATS_MACOS_RUNNER }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - run: sudo xcode-select -s "${{ vars.MTATS_XCODE_PATH }}"
+      - run: swift build --build-system swiftbuild
+      - run: swift test --build-system swiftbuild
+      - run: Scripts/tests/run.sh
+      - run: Scripts/package-app.sh -c release && Scripts/check-bundle.sh .build/mtats.app --release --signed --sparkle
+      - run: ${{ vars.MTATS_CI_SMOKE_TEST }}
