@@ -13,6 +13,9 @@ for widget in CPU RAM GPU Network; do
   Scripts/build-plugin.sh "$widget" "${widget}PluginMain" "$CONFIG"
 done
 
+SPARKLE_FW=$(find .build/artifacts -type d -path '*Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework' 2>/dev/null | head -1)
+[[ -n "$SPARKLE_FW" ]] || { echo "package-app.sh: Sparkle.framework not found under .build/artifacts" >&2; exit 1; }
+
 APP=".build/mtats.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks" "$APP/Contents/Resources/Plugins"
@@ -32,6 +35,7 @@ MTATS_OBJECTS=$(find "$OBJ_DIRS" -maxdepth 1 -name '*.o' ! -name '*-testable.o')
 swiftc -o "$APP/Contents/MacOS/mtats" \
   $MTATS_OBJECTS \
   -L ".build/$CONFIG" -lMTatsPluginKit \
+  -F "$(dirname "$SPARKLE_FW")" -framework Sparkle \
   -Xlinker -rpath -Xlinker "@executable_path/../Frameworks"
 
 Scripts/render-info-plist.sh "$APP/Contents/Info.plist" "$CONFIG"
@@ -40,6 +44,9 @@ for widget in CPU RAM GPU Network; do
   cp -R ".build/plugins/${widget}Widget.bundle" "$APP/Contents/Resources/Plugins/"
 done
 cp ".build/$CONFIG/libMTatsPluginKit.dylib" "$APP/Contents/Frameworks/"
+ditto "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
+# mtats is not sandboxed; Sparkle's XPC services exist only for sandboxed hosts (spec spike (b) outcome).
+rm -rf "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices"
 
 Scripts/sign-app.sh "$APP"
 echo "Packaged $APP ($CONFIG)"
