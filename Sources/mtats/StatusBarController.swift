@@ -26,11 +26,16 @@ public final class StatusBarController {
         self.widgets.append(contentsOf: newWidgets)
 
         for widget in newWidgets {
-            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-            let hosting = NSHostingView(rootView: widget.menuBarView())
-            hosting.frame = NSRect(x: 0, y: 0, width: 80, height: 22)
+            // NSStatusItem.squareLength reserves only ~24pt in the menu bar — not nearly
+            // enough for "CPU 45%" or "↓1.2 MB/s ↑340 KB/s" at 11pt. .variableLength with an
+            // explicit, generously-sized length (per widget, since Network's text runs much
+            // longer than CPU/RAM/GPU's) is what actually reserves room for the content.
+            let width: CGFloat = widget.id == "network" ? 150 : 70
+            let item = NSStatusBar.system.statusItem(withLength: width)
+            let hosting = PassthroughHostingView(rootView: widget.menuBarView())
+            hosting.frame = NSRect(x: 0, y: 0, width: width, height: NSStatusItem.squareLength)
+            hosting.autoresizingMask = [.width, .height]
             item.button?.addSubview(hosting)
-            item.button?.frame = hosting.frame
 
             let popover = NSPopover()
             popover.contentViewController = NSHostingController(rootView: widget.detailView())
@@ -42,11 +47,14 @@ public final class StatusBarController {
             items[widget.id] = item
             let enabled = settings.isEnabled(widgetID: widget.id)
             item.isVisible = enabled
-            if enabled {
-                widget.start(interval: settings.refreshInterval)
-            }
+            // Apply the public-IP toggle before start() — start() can fire an immediate
+            // lookup, and doing that before the toggle is applied would ignore a user who
+            // has it turned off (a privacy-relevant external call per spec §6).
             if let toggleable = widget as? PublicIPToggleable {
                 toggleable.setPublicIPLookupEnabled(settings.publicIPLookupEnabled)
+            }
+            if enabled {
+                widget.start(interval: settings.refreshInterval)
             }
         }
 
@@ -59,13 +67,13 @@ public final class StatusBarController {
         for widget in widgets {
             let enabled = settings.isEnabled(widgetID: widget.id)
             items[widget.id]?.isVisible = enabled
+            if let toggleable = widget as? PublicIPToggleable {
+                toggleable.setPublicIPLookupEnabled(settings.publicIPLookupEnabled)
+            }
             if enabled {
                 widget.start(interval: settings.refreshInterval)
             } else {
                 widget.stop()
-            }
-            if let toggleable = widget as? PublicIPToggleable {
-                toggleable.setPublicIPLookupEnabled(settings.publicIPLookupEnabled)
             }
         }
     }
@@ -93,6 +101,13 @@ public final class StatusBarController {
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
+}
+
+/// NSView's default hit-testing claims any click inside its bounds, including a plain
+/// non-interactive SwiftUI Text — which would swallow clicks meant for the NSStatusBarButton
+/// hosting it (the popover toggle would never fire). Returning nil lets the click pass through.
+private final class PassthroughHostingView<Content: View>: NSHostingView<Content> {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 /// Minimal shared target/action so each status item's button can toggle its own popover.

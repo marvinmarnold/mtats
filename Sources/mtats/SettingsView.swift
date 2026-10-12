@@ -1,5 +1,6 @@
 // Sources/mtats/SettingsView.swift
 // SPDX-License-Identifier: MIT
+import AppKit
 import SwiftUI
 import MTatsPluginKit
 
@@ -45,6 +46,9 @@ public struct SettingsView: View {
                 get: { settings.publicIPLookupEnabled },
                 set: { settings.publicIPLookupEnabled = $0; onToggle() }
             ))
+            // mtats is LSUIElement (no Dock icon, no app menu) — this is the only menu-bar
+            // utility's usual way to quit that a user has, short of Activity Monitor.
+            Button("Quit mtats") { NSApp.terminate(nil) }
         }.padding()
     }
 }

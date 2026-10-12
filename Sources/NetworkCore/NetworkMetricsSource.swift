@@ -44,6 +44,12 @@ public final class NetworkMetricsSource: ObservableObject {
         } else {
             publicIPTimer?.invalidate()
             publicIPTimer = nil
+            // Drop any IP already shown — leaving it displayed after the user turns the
+            // lookup off defeats the point of a privacy toggle.
+            currentPublicIP = nil
+            if let existing = latest {
+                latest = NetworkSnapshot(rxBytesPerSec: existing.rxBytesPerSec, txBytesPerSec: existing.txBytesPerSec, perInterface: existing.perInterface, localIPv4: existing.localIPv4, publicIP: nil)
+            }
         }
     }
 
@@ -80,6 +86,7 @@ public final class NetworkMetricsSource: ObservableObject {
             guard let self else { return }
             self.isFetchingPublicIP = false
             guard self.timer != nil else { return } // stop() was called while this was in flight
+            guard self.publicIPLookupEnabled else { return } // disabled while this was in flight
             self.currentPublicIP = ip
             if let existing = self.latest {
                 self.latest = NetworkSnapshot(rxBytesPerSec: existing.rxBytesPerSec, txBytesPerSec: existing.txBytesPerSec, perInterface: existing.perInterface, localIPv4: existing.localIPv4, publicIP: ip)

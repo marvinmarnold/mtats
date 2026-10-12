@@ -22,8 +22,10 @@ final class RAMCalculatorTests: XCTestCase {
         XCTAssertEqual(snapshot.compressedBytes, 25 * 4096)
         XCTAssertEqual(snapshot.freeBytes, 25 * 4096)
         XCTAssertEqual(snapshot.totalBytes, totalPhysical)
-        // used = total - free = 375/400
-        XCTAssertEqual(snapshot.usedFraction, 375.0 / 400.0, accuracy: 0.0001)
+        // Matches Activity Monitor's "Memory Used" definition (spec §5): wired + active +
+        // compressed, NOT total - free — inactive/cached pages are reclaimable, not "used".
+        // (100 + 200 + 25) / 400 = 325/400
+        XCTAssertEqual(snapshot.usedFraction, 325.0 / 400.0, accuracy: 0.0001)
     }
 
     func test_zeroTotalBytes_doesNotDivideByZero() {

@@ -19,6 +19,7 @@ public struct RAMDetailView: View {
             if let s = source.latest {
                 Text("Wired: \(ByteCountFormatter.string(fromByteCount: Int64(s.wiredBytes), countStyle: .memory))")
                 Text("Active: \(ByteCountFormatter.string(fromByteCount: Int64(s.activeBytes), countStyle: .memory))")
+                Text("Inactive: \(ByteCountFormatter.string(fromByteCount: Int64(s.inactiveBytes), countStyle: .memory))")
                 Text("Compressed: \(ByteCountFormatter.string(fromByteCount: Int64(s.compressedBytes), countStyle: .memory))")
                 Text("Free: \(ByteCountFormatter.string(fromByteCount: Int64(s.freeBytes), countStyle: .memory))")
             } else {

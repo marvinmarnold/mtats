@@ -47,29 +47,44 @@ public final class PluginLoader: ObservableObject {
 
     /// Human-readable signing identity for the one-time third-party warning: the signing
     /// certificate's common name when one exists, otherwise a clearly-labeled ad-hoc fallback
-    /// (ad-hoc signatures, used throughout local dev/smoke-testing, carry no certificate).
+    /// (ad-hoc signatures, used throughout local dev/smoke-testing, carry no certificate —
+    /// and critically, no verified identity at all: anyone can ad-hoc-sign anything).
     public func signingIdentity(bundlePath: URL) -> String {
-        var staticCode: SecStaticCode?
-        guard SecStaticCodeCreateWithPath(bundlePath as CFURL, [], &staticCode) == errSecSuccess, let code = staticCode else {
-            return "unknown"
-        }
-        var information: CFDictionary?
-        guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &information) == errSecSuccess,
-              let info = information as? [String: Any] else {
-            return "unknown"
-        }
+        guard let info = signingInformation(bundlePath: bundlePath) else { return "unknown" }
         if let certificates = info[kSecCodeInfoCertificates as String] as? [SecCertificate],
            let firstCertificate = certificates.first,
            let summary = SecCertificateCopySubjectSummary(firstCertificate) as String? {
             return summary
         }
-        if let identifier = info[kSecCodeInfoIdentifier as String] as? String {
-            return "ad-hoc (\(identifier))"
-        }
-        return "ad-hoc (unverified identity)"
+        return "unsigned (ad-hoc) — identity not verified"
     }
 
-    public func loadAll(builtInDirectory: URL, userDirectory: URL, warnBeforeFirstThirdPartyLoad: (String) -> Void = { _ in }) -> [MTatsWidget] {
+    /// A stable identifier for exactly this signed binary, used — instead of the plugin's
+    /// own self-declared CFBundleIdentifier — as the one-time-warning key. A plugin author
+    /// chooses their own CFBundleIdentifier, so keying on it would let a *different* signer
+    /// ship a plugin re-using an already-trusted identifier and skip the warning entirely.
+    /// kSecCodeInfoUnique is a hash of the actual signed code: it changes if a single byte of
+    /// the binary changes, so it can't be reused to impersonate a previously-approved plugin.
+    public func codeUniqueIdentifier(bundlePath: URL) -> String? {
+        guard let info = signingInformation(bundlePath: bundlePath),
+              let unique = info[kSecCodeInfoUnique as String] as? Data else { return nil }
+        return unique.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func signingInformation(bundlePath: URL) -> [String: Any]? {
+        var staticCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(bundlePath as CFURL, [], &staticCode) == errSecSuccess, let code = staticCode else {
+            return nil
+        }
+        var information: CFDictionary?
+        guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &information) == errSecSuccess,
+              let info = information as? [String: Any] else {
+            return nil
+        }
+        return info
+    }
+
+    public func loadAll(builtInDirectory: URL, userDirectory: URL, warnBeforeFirstThirdPartyLoad: (String) -> Bool = { _ in true }) -> [MTatsWidget] {
         ensureDirectoryExists(userDirectory)
         var widgets: [MTatsWidget] = []
         for (directory, isThirdParty) in [(builtInDirectory, false), (userDirectory, true)] {
@@ -81,7 +96,11 @@ public final class PluginLoader: ObservableObject {
         return widgets
     }
 
-    private func load(bundleAt path: URL, isThirdParty: Bool, warnBeforeFirstThirdPartyLoad: (String) -> Void) -> [MTatsWidget] {
+    /// `warnBeforeFirstThirdPartyLoad` returns whether to proceed — a user who declines
+    /// isn't asked again next launch; refusing is remembered no more durably than accepting
+    /// would need to be undone, so the next load attempt (relaunch, or a later hot-load
+    /// event) simply asks again rather than permanently blacklisting the plugin.
+    private func load(bundleAt path: URL, isThirdParty: Bool, warnBeforeFirstThirdPartyLoad: (String) -> Bool) -> [MTatsWidget] {
         guard hasValidSignature(bundlePath: path) else {
             diagnosticMessages.append("Skipped \(path.lastPathComponent): invalid or missing signature")
             return []
@@ -92,10 +111,17 @@ public final class PluginLoader: ObservableObject {
             return []
         }
         if isThirdParty {
-            let identifier = (info["CFBundleIdentifier"] as? String) ?? path.lastPathComponent
-            if !hasWarnedAboutThirdPartyPlugin(identifier: identifier) {
-                warnBeforeFirstThirdPartyLoad(signingIdentity(bundlePath: path))
-                markWarnedAboutThirdPartyPlugin(identifier: identifier)
+            // Keyed on the signed code's own hash, not the plugin's self-declared
+            // CFBundleIdentifier (see codeUniqueIdentifier's doc comment) — falls back to the
+            // bundle identifier only if the signing info is unexpectedly unreadable, which
+            // can't happen once hasValidSignature above has already succeeded.
+            let warnKey = codeUniqueIdentifier(bundlePath: path) ?? (info["CFBundleIdentifier"] as? String) ?? path.lastPathComponent
+            if !hasWarnedAboutThirdPartyPlugin(identifier: warnKey) {
+                guard warnBeforeFirstThirdPartyLoad(signingIdentity(bundlePath: path)) else {
+                    diagnosticMessages.append("Skipped \(path.lastPathComponent): declined at the third-party load warning")
+                    return []
+                }
+                markWarnedAboutThirdPartyPlugin(identifier: warnKey)
             }
         }
         guard bundle.load(), let principal = bundle.principalClass as? PluginEntry.Type else {
@@ -108,7 +134,7 @@ public final class PluginLoader: ObservableObject {
     /// spec §4.2: the third-party directory is watched so a new plugin loads without a
     /// relaunch. FSEventStream is a C API; wrap it in a small class so the closure-based
     /// callback has somewhere to route back into Swift.
-    public func watchForNewPlugins(in directory: URL, warnBeforeFirstThirdPartyLoad: @escaping (String) -> Void = { _ in }, onNewWidgets: @escaping ([MTatsWidget]) -> Void) -> PluginDirectoryWatcher {
+    public func watchForNewPlugins(in directory: URL, warnBeforeFirstThirdPartyLoad: @escaping (String) -> Bool = { _ in true }, onNewWidgets: @escaping ([MTatsWidget]) -> Void) -> PluginDirectoryWatcher {
         let watcher = PluginDirectoryWatcher(directory: directory) { [weak self] in
             guard let self, let entries = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
             let newWidgets = entries

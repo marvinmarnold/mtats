@@ -9,9 +9,13 @@ public struct RAMSnapshot: Equatable {
     public let freeBytes: UInt64
     public let totalBytes: UInt64
 
+    /// Matches Activity Monitor's "Memory Used" definition (spec §5), not total - free:
+    /// inactive/cached pages are reclaimable on demand, so counting them as "used" would read
+    /// close to 100% on any Mac that's been running a while, misleading anyone watching this
+    /// number the way they'd watch Activity Monitor's.
     public var usedFraction: Double {
         guard totalBytes > 0 else { return 0.0 }
-        let used = totalBytes > freeBytes ? totalBytes - freeBytes : 0
+        let used = min(wiredBytes + activeBytes + compressedBytes, totalBytes)
         return Double(used) / Double(totalBytes)
     }
 

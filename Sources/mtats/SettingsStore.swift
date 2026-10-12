@@ -15,12 +15,16 @@ public final class SettingsStore: ObservableObject {
     }
 
     public func setEnabled(_ enabled: Bool, widgetID: String) {
+        objectWillChange.send()
         defaults.set(enabled, forKey: "widget.\(widgetID).enabled")
     }
 
     public var refreshInterval: TimeInterval {
         get { let value = defaults.double(forKey: "refreshInterval"); return value > 0 ? value : 1.0 }
-        set { defaults.set(newValue, forKey: "refreshInterval") }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: "refreshInterval")
+        }
     }
 
     /// Actually registers/unregisters with the system (ServiceManagement), not just a
@@ -28,6 +32,7 @@ public final class SettingsStore: ObservableObject {
     public var launchAtLoginEnabled: Bool {
         get { SMAppService.mainApp.status == .enabled }
         set {
+            objectWillChange.send()
             do {
                 if newValue { try SMAppService.mainApp.register() }
                 else { try SMAppService.mainApp.unregister() }
@@ -39,6 +44,9 @@ public final class SettingsStore: ObservableObject {
 
     public var publicIPLookupEnabled: Bool {
         get { defaults.object(forKey: "publicIPLookupEnabled") as? Bool ?? true }
-        set { defaults.set(newValue, forKey: "publicIPLookupEnabled") }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: "publicIPLookupEnabled")
+        }
     }
 }
