@@ -4,7 +4,10 @@ import AppKit
 import SwiftUI
 import MTatsPluginKit
 
-public final class StatusBarController {
+/// An NSObject because the ⚙ status item sends its click to `self` via target/action; AppKit can
+/// only dispatch that to an NSObject that responds to the selector. As a plain Swift class the
+/// click was silently dropped and Settings never opened.
+public final class StatusBarController: NSObject {
     private var items: [String: NSStatusItem] = [:]
     private var widgets: [MTatsWidget] = []
     /// Interval each widget was last started at; absent means stopped.
@@ -17,6 +20,7 @@ public final class StatusBarController {
     public init(settings: SettingsStore, loader: PluginLoader) {
         self.settings = settings
         self.loader = loader
+        super.init()
     }
 
     /// Call again with an expanded widget list (e.g. after the FSEvents watcher in
@@ -154,21 +158,49 @@ private final class PassthroughHostingView<Content: View>: NSHostingView<Content
     }
 }
 
-/// Minimal shared target/action so each status item's button can toggle its own popover.
-private final class PopoverShower: NSObject {
+/// Shared target/action so each status item's button can toggle its own popover, and so a click
+/// anywhere else on screen dismisses it. `.transient` alone doesn't: for an accessory (no Dock icon)
+/// app, clicks on the desktop or in another app's window don't reliably close the popover.
+private final class PopoverShower: NSObject, NSPopoverDelegate {
     static let shared = PopoverShower()
     private var popovers: [ObjectIdentifier: NSPopover] = [:]
+    private var clickAwayMonitor: Any?
 
     func register(button: NSStatusBarButton, popover: NSPopover) {
         popovers[ObjectIdentifier(button)] = popover
+        popover.delegate = self
     }
 
     @objc func toggle(_ sender: NSStatusBarButton) {
         guard let popover = popovers[ObjectIdentifier(sender)] else { return }
         if popover.isShown {
             popover.performClose(sender)
-        } else {
-            popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+            return
         }
+        closeAll() // one open at a time
+        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+        installClickAwayMonitor()
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        if !popovers.values.contains(where: \.isShown) { removeClickAwayMonitor() }
+    }
+
+    private func closeAll() {
+        for popover in popovers.values where popover.isShown { popover.performClose(nil) }
+    }
+
+    /// Global monitors only see events destined for *other* apps, so a click on one of our own
+    /// status buttons never reaches this handler and can't double-toggle.
+    private func installClickAwayMonitor() {
+        guard clickAwayMonitor == nil else { return }
+        clickAwayMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
+            self?.closeAll()
+        }
+    }
+
+    private func removeClickAwayMonitor() {
+        if let monitor = clickAwayMonitor { NSEvent.removeMonitor(monitor) }
+        clickAwayMonitor = nil
     }
 }

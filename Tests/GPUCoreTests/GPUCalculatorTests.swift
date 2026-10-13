@@ -1,5 +1,6 @@
 // Tests/GPUCoreTests/GPUCalculatorTests.swift
 // SPDX-License-Identifier: MIT
+import AppKit
 import XCTest
 @testable import GPUCore
 
@@ -32,5 +33,13 @@ final class GPUCalculatorTests: XCTestCase {
 
     func test_emptyDictionary_returnsNil() {
         XCTAssertNil(GPUCalculator.utilization(fromPerformanceStatistics: [:]))
+    }
+}
+
+final class GPUIconTests: XCTestCase {
+    func test_gpuIcon_existsAndDiffersFromCPU() {
+        XCTAssertNotNil(NSImage(systemSymbolName: GPUIcon.symbolName, accessibilityDescription: nil))
+        XCTAssertNotEqual(GPUIcon.symbolName, "cpu")
+        XCTAssertNotEqual(GPUIcon.symbolName, "display")
     }
 }
