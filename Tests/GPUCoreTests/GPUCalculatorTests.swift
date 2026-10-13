@@ -1,6 +1,7 @@
 // Tests/GPUCoreTests/GPUCalculatorTests.swift
 // SPDX-License-Identifier: MIT
 import AppKit
+import SwiftUI
 import XCTest
 @testable import GPUCore
 
@@ -37,9 +38,12 @@ final class GPUCalculatorTests: XCTestCase {
 }
 
 final class GPUIconTests: XCTestCase {
-    func test_gpuIcon_existsAndDiffersFromCPU() {
-        XCTAssertNotNil(NSImage(systemSymbolName: GPUIcon.symbolName, accessibilityDescription: nil))
-        XCTAssertNotEqual(GPUIcon.symbolName, "cpu")
-        XCTAssertNotEqual(GPUIcon.symbolName, "display")
+    /// SF Symbols has no graphics-card glyph, so the GPU icon is drawn; it must actually paint pixels.
+    @MainActor func test_gpuGlyph_rendersVisiblePixels() throws {
+        let renderer = ImageRenderer(content: GPUGlyph().frame(width: 32, height: 32).foregroundStyle(.black))
+        renderer.scale = 2
+        let cg = try XCTUnwrap(renderer.cgImage)
+        let data = try XCTUnwrap(cg.dataProvider?.data as Data?)
+        XCTAssertTrue(data.contains { $0 != 0 }, "glyph rendered fully transparent")
     }
 }
