@@ -28,7 +28,7 @@ final class UpdaterDelegate: NSObject, SPUUpdaterDelegate {
 /// LSUIElement apps aren't frontmost; without activating, Sparkle's window opens behind others.
 final class UserDriverDelegate: NSObject, SPUStandardUserDriverDelegate {
     func standardUserDriverWillHandleShowingUpdate(_ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState) {
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true) // plain activate() is cooperative and loses to the frontmost app
     }
 }
 
@@ -45,7 +45,7 @@ public final class UpdateControls: ObservableObject {
     }
 
     public func checkForUpdates() {
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true) // plain activate() is cooperative and loses to the frontmost app
         updater.checkForUpdates()
     }
 
