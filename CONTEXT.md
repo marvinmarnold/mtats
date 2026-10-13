@@ -21,7 +21,7 @@ A Plugin installed by the user into the Host's user-writable plugins directory, 
 _Avoid_: External plugin, add-on
 
 **Widget**:
-A single monitoring capability a Plugin exposes to the Host: a menu-bar presentation (sparkline/number) plus a dropdown detail view, backed by its own polling logic. One Plugin may expose more than one Widget architecturally, though every v1 Plugin exposes exactly one.
+A single monitoring capability a Plugin exposes to the Host: a menu-bar presentation (sparkline/number) plus a dropdown detail view, backed by its own polling logic. One Plugin may expose more than one Widget architecturally, though every v1 Plugin exposes exactly one. The Swift protocol is named `MTatsWidget`, not `Widget` — `import SwiftUI` already declares a public `Widget` protocol (WidgetKit), which collides the instant a concrete widget needs both SwiftUI and this protocol (ADR-0005 addendum). The domain term stays "Widget"; only the Swift identifier differs.
 _Avoid_: Plugin (see above), sensor, monitor
 
 **Snapshot**:
