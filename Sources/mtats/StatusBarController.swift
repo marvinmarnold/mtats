@@ -136,7 +136,13 @@ public final class StatusBarController: NSObject {
         // An LSUIElement app is never frontmost, and a plain `activate()` is cooperative: it doesn't
         // take focus from the app you're in, so the window opened *behind* Chrome and looked like
         // the click did nothing (verified with a window-order probe). Bring it forward explicitly.
-        settingsWindow?.center()
+        if let window = settingsWindow {
+            if let anchor = settingsItem?.button?.window?.frame, let visible = (settingsItem?.button?.window?.screen ?? NSScreen.main)?.visibleFrame {
+                window.setFrameOrigin(SettingsPlacement.origin(size: window.frame.size, below: anchor, in: visible))
+            } else {
+                window.center()
+            }
+        }
         settingsWindow?.makeKeyAndOrderFront(nil)
         settingsWindow?.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)

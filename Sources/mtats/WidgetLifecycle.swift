@@ -27,3 +27,16 @@ public enum WidgetLifecycle {
         max(current, (measured + itemPadding).rounded(.up))
     }
 }
+
+/// Where the Settings window opens: hanging just under the menu bar beneath the ⚙ item (like a
+/// dropdown), not centered on screen, which left it far from the menu it was opened from.
+public enum SettingsPlacement {
+    public static let gap: CGFloat = 4
+
+    /// Bottom-left origin in AppKit screen coordinates. `anchor` is the status item's window
+    /// frame; `visible` is the screen's visibleFrame (already excludes the menu bar).
+    public static func origin(size: CGSize, below anchor: CGRect, in visible: CGRect) -> CGPoint {
+        let x = min(max(anchor.midX - size.width / 2, visible.minX), visible.maxX - size.width)
+        return CGPoint(x: x, y: anchor.minY - gap - size.height)
+    }
+}

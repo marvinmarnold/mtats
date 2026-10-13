@@ -36,3 +36,20 @@ final class WidgetLifecycleTests: XCTestCase {
         XCTAssertEqual(WidgetLifecycle.itemWidth(current: 90, measured: 30), 90)
     }
 }
+
+final class SettingsPlacementTests: XCTestCase {
+    private let visible = CGRect(x: 0, y: 78, width: 1452, height: 688) // below the menu bar, bottom-origin
+
+    func testHangsJustBelowTheAnchorCenteredOnIt() {
+        let anchor = CGRect(x: 700, y: 766, width: 24, height: 30) // status item window, top of screen
+        let origin = SettingsPlacement.origin(size: CGSize(width: 360, height: 280), below: anchor, in: visible)
+        XCTAssertEqual(origin.x, 700 + 12 - 180)
+        XCTAssertEqual(origin.y, 766 - 4 - 280) // 4pt gap under the menu bar, not screen-centered
+    }
+
+    func testClampsToTheRightEdgeWhenAnchorIsNearIt() {
+        let anchor = CGRect(x: 1430, y: 766, width: 24, height: 30)
+        let origin = SettingsPlacement.origin(size: CGSize(width: 360, height: 280), below: anchor, in: visible)
+        XCTAssertEqual(origin.x, 1452 - 360)
+    }
+}
