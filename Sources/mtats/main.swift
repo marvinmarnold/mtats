@@ -47,7 +47,7 @@ func warnBeforeFirstThirdPartyLoad(identity: String) -> Bool {
     }
     // This fires before any status item exists — without activating, the alert can open
     // behind other windows and look like a stalled launch.
-    NSApp.activate()
+    NSApp.activate(ignoringOtherApps: true) // plain activate() wouldn't take focus from the frontmost app
     let alert = NSAlert()
     alert.messageText = "New third-party plugin"
     alert.informativeText = "A plugin signed by \"\(identity)\" wants to load for the first time. Third-party plugins run with the same access to your Mac as mtats itself."

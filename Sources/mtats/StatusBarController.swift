@@ -133,8 +133,13 @@ public final class StatusBarController: NSObject {
             window.isReleasedWhenClosed = false
             settingsWindow = window
         }
+        // An LSUIElement app is never frontmost, and a plain `activate()` is cooperative: it doesn't
+        // take focus from the app you're in, so the window opened *behind* Chrome and looked like
+        // the click did nothing (verified with a window-order probe). Bring it forward explicitly.
+        settingsWindow?.center()
         settingsWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        settingsWindow?.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
