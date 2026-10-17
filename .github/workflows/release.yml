@@ -146,7 +146,7 @@ jobs:
         run: |
           B=https://storage.googleapis.com/mtats-releases
           # Stable latest.json drives the page and /download; an rc never changes them.
-          if curl -fsS -o src/data/latest.json "$B/latest.json"; then :; else rm -f src/data/latest.json; echo "MTATS_SITE_BOOTSTRAP=1" >> "$GITHUB_ENV"; fi
+          if curl -fsS -o src/data/latest.json "$B/latest.json"; then :; else rm -f src/data/latest.json; export MTATS_SITE_BOOTSTRAP=1; echo "MTATS_SITE_BOOTSTRAP=1" >> "$GITHUB_ENV"; fi
           curl -fsS -o public/appcast.xml "$B/appcast.xml" || true
           mkdir -p public/beta && { curl -fsS -o public/beta/appcast.xml "$B/beta/appcast.xml" || true; }
           curl -fsS -o public/latest.json "$B/latest.json" || true
