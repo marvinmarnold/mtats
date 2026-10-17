@@ -29,6 +29,8 @@ gcloud storage buckets add-iam-policy-binding "gs://$B" --project "$P" --member=
 
 gcloud iam service-accounts describe "$SA" --project "$P" >/dev/null 2>&1 || \
   gcloud iam service-accounts create github-release --project "$P" --display-name="GitHub release publisher"
+# A new service account takes a few seconds to become visible to IAM bindings.
+for _ in $(seq 12); do gcloud iam service-accounts describe "$SA" --project "$P" >/dev/null 2>&1 && break; sleep 5; done; sleep 10
 gcloud storage buckets add-iam-policy-binding "gs://$B" --project "$P" --member="serviceAccount:$SA" --role=roles/storage.objectAdmin
 gcloud projects add-iam-policy-binding "$P" --member="serviceAccount:$SA" --role=roles/firebasehosting.admin --condition=None
 gcloud projects add-iam-policy-binding "$P" --member="serviceAccount:$SA" --role=roles/serviceusage.serviceUsageConsumer --condition=None
