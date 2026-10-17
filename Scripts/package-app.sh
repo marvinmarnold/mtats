@@ -9,6 +9,9 @@ case "$CONFIG" in debug) CONFIG_DIR=Debug ;; release) CONFIG_DIR=Release ;; *) e
 
 # The relink below reads the swiftbuild backend's intermediates layout; pin the backend.
 swift build -c "$CONFIG" --build-system swiftbuild
+# The .build/<config> convenience symlink is not created by every toolchain (hosted runners lack it).
+BIN_DIR=$(swift build -c "$CONFIG" --build-system swiftbuild --show-bin-path)
+export MTATS_BIN_DIR="$BIN_DIR"
 for widget in CPU RAM GPU Network; do
   Scripts/build-plugin.sh "$widget" "${widget}PluginMain" "$CONFIG"
 done
@@ -34,7 +37,7 @@ fi
 MTATS_OBJECTS=$(find "$OBJ_DIRS" -maxdepth 1 -name '*.o' ! -name '*-testable.o')
 swiftc -o "$APP/Contents/MacOS/mtats" \
   $MTATS_OBJECTS \
-  -L ".build/$CONFIG" -lMTatsPluginKit \
+  -L "$BIN_DIR" -lMTatsPluginKit \
   -F "$(dirname "$SPARKLE_FW")" -framework Sparkle \
   -Xlinker -rpath -Xlinker "@executable_path/../Frameworks"
 
@@ -43,7 +46,7 @@ Scripts/render-info-plist.sh "$APP/Contents/Info.plist" "$CONFIG"
 for widget in CPU RAM GPU Network; do
   cp -R ".build/plugins/${widget}Widget.bundle" "$APP/Contents/Resources/Plugins/"
 done
-cp ".build/$CONFIG/libMTatsPluginKit.dylib" "$APP/Contents/Frameworks/"
+cp "$BIN_DIR/libMTatsPluginKit.dylib" "$APP/Contents/Frameworks/"
 ditto "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
 # mtats is not sandboxed; Sparkle's XPC services exist only for sandboxed hosts (spec spike (b) outcome).
 rm -rf "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices"
