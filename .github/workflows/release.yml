@@ -1,0 +1,163 @@
+# SPDX-License-Identifier: MIT
+name: release
+on:
+  push:
+    tags: ['v*']
+concurrency:
+  group: release
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  build-sign-notarize:
+    runs-on: ${{ vars.MTATS_MACOS_RUNNER }}
+    environment: release
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - run: sudo xcode-select -s "${{ vars.MTATS_XCODE_PATH }}"
+      - name: Validate tag, derive version
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || { echo "::error::bad tag $TAG"; exit 1; }
+          VERSION="${TAG#v}"
+          git fetch -q origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::tag is not on main"; exit 1; }
+          test -s "Releases/${VERSION}.md" || { echo "::error::Releases/${VERSION}.md missing"; exit 1; }
+          CHANNEL=stable; [[ "$VERSION" == *-rc.* ]] && CHANNEL=beta
+          { echo "MTATS_VERSION=$VERSION"; echo "MTATS_BUILD=$(git rev-list --count HEAD)"; echo "MTATS_CHANNEL=$CHANNEL"; } >> "$GITHUB_ENV"
+      - name: Gate — tests
+        run: Scripts/swift-test.sh && Scripts/tests/run.sh
+      - name: Gate — release package and smoke test
+        run: Scripts/package-app.sh -c release && ${{ vars.MTATS_CI_SMOKE_TEST }}
+      - name: Update guard
+        run: Scripts/appcast-guard.sh "$MTATS_CHANNEL" "$MTATS_BUILD"
+      - name: Import Developer ID
+        env:
+          P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/signing.keychain-db"; KC_PW=$(uuidgen)
+          echo "$P12_BASE64" | base64 -d > "$RUNNER_TEMP/devid.p12"
+          security create-keychain -p "$KC_PW" "$KC"
+          security set-keychain-settings -lut 3600 "$KC"
+          security unlock-keychain -p "$KC_PW" "$KC"
+          security import "$RUNNER_TEMP/devid.p12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PW" "$KC" >/dev/null
+          # shellcheck disable=SC2046  # intentional word splitting: one argument per existing keychain
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/devid.p12"
+          IDS=$(security find-identity -v -p codesigning "$KC" | grep "Developer ID Application:.*(${{ vars.APPLE_TEAM_ID }})")
+          [[ $(wc -l <<<"$IDS") -eq 1 ]] || { echo "::error::expected exactly one Developer ID identity"; exit 1; }
+          echo "MTATS_IDENTITY=$(sed -E 's/^.*"(.*)"$/\1/' <<<"$IDS")" >> "$GITHUB_ENV"
+      - name: Sign
+        run: |
+          Scripts/sign-app.sh .build/mtats.app "$MTATS_IDENTITY"
+          Scripts/check-bundle.sh .build/mtats.app --release --signed --sparkle
+      - name: Write notary key
+        env:
+          P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+        run: |
+          printf '%s' "$P8" > "$RUNNER_TEMP/notary.p8"
+          echo "APPLE_NOTARY_KEY_FILE=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+      - name: Notarize app
+        env:
+          APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+        run: Scripts/notarize.sh .build/mtats.app && spctl -a -vv .build/mtats.app
+      - name: DMG
+        env:
+          APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          mkdir -p out
+          DMG="out/mtats-${MTATS_VERSION}.dmg"
+          Scripts/make-dmg.sh .build/mtats.app "$DMG"
+          codesign --force --timestamp --sign "$MTATS_IDENTITY" "$DMG"
+          Scripts/notarize.sh "$DMG"
+          spctl -a -vv -t open --context context:primary-signature "$DMG"
+          (cd out && shasum -a 256 "mtats-${MTATS_VERSION}.dmg" > "mtats-${MTATS_VERSION}.dmg.sha256")
+      - name: Appcast and latest.json
+        env:
+          ED_KEY: ${{ secrets.SPARKLE_ED25519_PRIVATE_KEY }}
+        run: |
+          Scripts/fetch-sparkle-tools.sh
+          PREFIX=""; [[ "$MTATS_CHANNEL" == beta ]] && PREFIX="beta/"
+          W="$RUNNER_TEMP/appcast"; mkdir -p "$W"
+          curl -fsS -o "$W/appcast.xml" "https://storage.googleapis.com/mtats-releases/${PREFIX}appcast.xml" || rm -f "$W/appcast.xml"
+          cp "out/mtats-${MTATS_VERSION}.dmg" "$W/"
+          /usr/bin/python3 Scripts/notes-to-html.py "Releases/${MTATS_VERSION}.md" "$W/mtats-${MTATS_VERSION}.html"
+          printf '%s' "$ED_KEY" > "$RUNNER_TEMP/ed.key"
+          .build/sparkle-tools/bin/generate_appcast --ed-key-file "$RUNNER_TEMP/ed.key" \
+            --download-url-prefix "https://mtats.app/releases/" --link "https://mtats.app" "$W"
+          cp "$W/appcast.xml" out/appcast.xml
+          SIZE=$(stat -f %z "out/mtats-${MTATS_VERSION}.dmg")
+          SHA=$(cut -d' ' -f1 "out/mtats-${MTATS_VERSION}.dmg.sha256")
+          /usr/bin/python3 - <<PY > out/latest.json
+          import json, datetime
+          print(json.dumps({"version": "$MTATS_VERSION", "build": int("$MTATS_BUILD"), "channel": "$MTATS_CHANNEL",
+            "url": "https://mtats.app/releases/mtats-$MTATS_VERSION.dmg", "sizeBytes": $SIZE, "sha256": "$SHA",
+            "publishedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+            "minimumSystemVersion": "14.0"}, indent=2))
+          PY
+          cp "Releases/${MTATS_VERSION}.md" out/
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release
+          path: out/
+          if-no-files-found: error
+      - name: Clean up secrets
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/ed.key" "$RUNNER_TEMP/devid.p12"
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+  publish:
+    needs: build-sign-notarize
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Channel and version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"; CHANNEL=stable; [[ "$VERSION" == *-rc.* ]] && CHANNEL=beta
+          { echo "MTATS_VERSION=$VERSION"; echo "MTATS_CHANNEL=$CHANNEL"; } >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release
+          path: out
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+      - name: Upload to bucket
+        run: Scripts/publish.sh out "$MTATS_CHANNEL" "$MTATS_VERSION"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Build site with published data
+        working-directory: site
+        run: |
+          B=https://storage.googleapis.com/mtats-releases
+          # Stable latest.json drives the page and /download; an rc never changes them.
+          if curl -fsS -o src/data/latest.json "$B/latest.json"; then :; else rm -f src/data/latest.json; echo "MTATS_SITE_BOOTSTRAP=1" >> "$GITHUB_ENV"; fi
+          curl -fsS -o public/appcast.xml "$B/appcast.xml" || true
+          mkdir -p public/beta && { curl -fsS -o public/beta/appcast.xml "$B/beta/appcast.xml" || true; }
+          curl -fsS -o public/latest.json "$B/latest.json" || true
+          npm ci && npm run build
+      - name: Deploy Hosting
+        working-directory: site
+        run: npx firebase deploy --only hosting --project mtats-release --non-interactive
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRE=(); [[ "$MTATS_CHANNEL" == beta ]] && PRE=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" "out/mtats-${MTATS_VERSION}.dmg" "out/mtats-${MTATS_VERSION}.dmg.sha256" \
+            --title "mtats $MTATS_VERSION" --notes-file "out/${MTATS_VERSION}.md" "${PRE[@]}"

@@ -8,12 +8,14 @@ public struct SettingsView: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var loader: PluginLoader
     let widgets: [MTatsWidget]
+    let updateControls: UpdateControls?
     let onToggle: () -> Void
 
-    public init(settings: SettingsStore, widgets: [MTatsWidget], loader: PluginLoader, onToggle: @escaping () -> Void) {
+    public init(settings: SettingsStore, widgets: [MTatsWidget], loader: PluginLoader, updateControls: UpdateControls? = nil, onToggle: @escaping () -> Void) {
         self.settings = settings
         self.widgets = widgets
         self.loader = loader
+        self.updateControls = updateControls
         self.onToggle = onToggle
     }
 
@@ -46,6 +48,9 @@ public struct SettingsView: View {
                 get: { settings.publicIPLookupEnabled },
                 set: { settings.publicIPLookupEnabled = $0; onToggle() }
             ))
+            if let updateControls {
+                UpdatesSection(controls: updateControls)
+            }
             // mtats is LSUIElement (no Dock icon, no app menu) — this is the only menu-bar
             // utility's usual way to quit that a user has, short of Activity Monitor.
             Button("Quit mtats") { NSApp.terminate(nil) }
@@ -73,5 +78,20 @@ public struct DiagnosticsView: View {
                 }
             }
         }.padding()
+    }
+}
+
+private struct UpdatesSection: View {
+    @ObservedObject var controls: UpdateControls
+    var body: some View {
+        Button("Check for Updates…") { controls.checkForUpdates() }
+            .disabled(!controls.canCheckForUpdates)
+        Toggle("Automatically check for updates", isOn: Binding(
+            get: { controls.automaticallyChecks },
+            set: { controls.automaticallyChecks = $0 }
+        ))
+        let info = Bundle.main.infoDictionary
+        Text("Version \(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))")
+            .foregroundStyle(.secondary)
     }
 }

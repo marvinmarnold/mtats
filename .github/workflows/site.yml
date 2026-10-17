@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: MIT
+name: site
+on:
+  push:
+    branches: [main]
+    paths: ['site/**']
+concurrency:
+  group: release
+  cancel-in-progress: false
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Fetch published feeds and latest.json
+        working-directory: site
+        run: |
+          B=https://storage.googleapis.com/mtats-releases
+          if curl -fsS -o src/data/latest.json "$B/latest.json"; then echo "using published latest.json"; else rm -f src/data/latest.json; echo "MTATS_SITE_BOOTSTRAP=1" >> "$GITHUB_ENV"; fi
+          curl -fsS -o public/appcast.xml "$B/appcast.xml" || true
+          mkdir -p public/beta && { curl -fsS -o public/beta/appcast.xml "$B/beta/appcast.xml" || true; }
+          curl -fsS -o public/latest.json "$B/latest.json" || true
+      - working-directory: site
+        run: npm ci && npm run build
+      - working-directory: site
+        run: npx firebase deploy --only hosting --project mtats-release --non-interactive

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 import AppKit
 import Foundation
+import Sparkle
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory) // menu-bar only, no Dock icon
@@ -64,7 +65,15 @@ if widgets.isEmpty {
     // zero widgets, no crash. Only Scripts/package-app.sh's relink step avoids it.
     FileHandle.standardError.write("mtats: loaded zero widgets — if you built with plain `swift build`/`swift run`, use Scripts/package-app.sh instead (see ADR-0005's Task 10 addendum).\n".data(using: .utf8)!)
 }
-let statusBar = StatusBarController(settings: settings, loader: loader)
+// Held at top level for the process lifetime, like `watcher`.
+let updaterDelegate = UpdaterDelegate(defaults: .standard)
+let userDriverDelegate = UserDriverDelegate()
+let updaterController: SPUStandardUpdaterController? =
+    UpdateChannel.isEnabled(infoDictionary: Bundle.main.infoDictionary, isSmokeTest: isSmokeTest)
+    ? SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: updaterDelegate, userDriverDelegate: userDriverDelegate)
+    : nil
+let updateControls = updaterController.map { UpdateControls(updater: $0.updater) }
+let statusBar = StatusBarController(settings: settings, loader: loader, updateControls: updateControls)
 statusBar.present(widgets: widgets)
 
 // spec §4.2: third-party plugins hot-load without a relaunch. Held at top level so it

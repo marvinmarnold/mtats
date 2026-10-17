@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+<channel><title>mtats</title>
+<item><title>0.1.0</title><sparkle:version>120</sparkle:version><sparkle:shortVersionString>0.1.0</sparkle:shortVersionString></item>
+<item><title>0.1.1</title><sparkle:version>137</sparkle:version><sparkle:shortVersionString>0.1.1</sparkle:shortVersionString></item>
+</channel></rss>
