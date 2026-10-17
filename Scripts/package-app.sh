@@ -42,6 +42,7 @@ for widget in CPU RAM GPU Network; do
   cp -R ".build/plugins/${widget}Widget.bundle" "$APP/Contents/Resources/Plugins/"
 done
 cp "$BIN_DIR/libMTatsPluginKit.dylib" "$APP/Contents/Frameworks/"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 ditto "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
 # mtats is not sandboxed; Sparkle's XPC services exist only for sandboxed hosts (spec spike (b) outcome).
 rm -rf "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices"

@@ -12,6 +12,7 @@
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
   <key>NSHumanReadableCopyright</key><string>© __COPYRIGHT_YEAR__ The mtats contributors, MIT License</string>
   <key>LSUIElement</key><true/>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>SUFeedURL</key><string>https://mtats.app/appcast.xml</string>
   <key>SUEnableAutomaticChecks</key><true/>
   <key>SUScheduledCheckInterval</key><integer>86400</integer>

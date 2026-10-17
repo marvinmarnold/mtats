@@ -22,9 +22,11 @@ for b in "$APP"/Contents/Resources/Plugins/*.bundle; do
   bin="$b/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$b/Contents/Info.plist")"
   if (( RELEASE )); then otool -l "$bin" | grep -A2 LC_RPATH | grep -q '/debug' && fail "$(basename "$b") ships a dev rpath"; fi
 done
+[[ -f "$APP/Contents/Resources/AppIcon.icns" ]] || fail "AppIcon.icns missing from Contents/Resources"
 PB=/usr/libexec/PlistBuddy
 [[ "$($PB -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" == "$(Scripts/version.sh version)" ]] || fail "CFBundleShortVersionString mismatch"
 [[ "$($PB -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")" == "$(Scripts/version.sh build)" ]] || fail "CFBundleVersion mismatch"
+[[ "$($PB -c 'Print :CFBundleIconFile' "$APP/Contents/Info.plist")" == "AppIcon" ]] || fail "CFBundleIconFile must be AppIcon"
 if (( RELEASE )); then
   [[ "$($PB -c 'Print :SUFeedURL' "$APP/Contents/Info.plist")" == "https://mtats.app/appcast.xml" ]] || fail "release SUFeedURL"
 else
