@@ -1,0 +1,743 @@
+# mtats site and app icon — design spec
+
+Status: drafted 2026-10-17 for plan Task 18 (`docs/superpowers/plans/2026-10-12-release-pipeline.md`) against the `release-pipeline` branch at `c4474a1`. The owner was away, so the design choices Task 18 Step 1 reserved for them are made here; the owner may veto any of them at Task 18 Step 5 (visual approval), which stays in the plan. Everything else in this document is implementable verbatim.
+
+Supersedes in Task 18: Step 1 (owner direction) is replaced by §Decisions; `site/public/menubar.svg` is replaced by an inline SVG component (§3.4); Step 4's "produce a 1024×1024 master" is replaced by §5–§7. The spec's §Website constraints (`2026-10-11-release-pipeline-design.md`) all still apply and are restated as acceptance checks in §9.
+
+## Decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| D1 | Visual direction: a plain dark macOS menu bar with the four readings, drawn at 2× as inline SVG, directly under the headline. The "sleeve" metaphor is carried by the copy and by the icon's cuff band, not by a shirt illustration. | Honest (it is what the product looks like), zero image bytes, themeable, and the only one of the three directions in Task 18 Step 1 that an implementer can reproduce exactly from a spec. |
+| D2 | One accent colour, green (`#15803D` light / `#4ADE80` dark). | A monitor's "all good" colour; does not collide with the app's own red/orange load tints or the blue/orange network arrows, which appear in the mock-up. |
+| D3 | System font stack only; no web fonts, no scripts, no third-party requests. Dark mode via `prefers-color-scheme`, no toggle. | Spec §Website constraints; a toggle would need JavaScript and storage. |
+| D4 | App icon: dark slate squircle, a light rounded "cuff" band across the middle, a green sparkline on the band. Flat shapes only (no blur filters), so any rasteriser produces the same picture. | Reads at 16 px (a light band on dark with a green zigzag), echoes the monoline style of `GPUGlyph`, and the band is the sleeve/menu-bar pun. |
+| D5 | The icon is rasterised by a Swift/AppKit script that draws the same primitives as the SVG; `rsvg-convert` is not used. Rendered PNGs and the `.icns` are committed. | `swift` and `iconutil` exist on every Mac with the Command Line Tools, which the project already requires; nothing else is assumed. Committing the outputs keeps CI free of rendering. |
+| D6 | Screenshots are captured in the dark appearance on a 2× display. | Matches the mock-up; one appearance avoids doubling the asset set. |
+| D7 | The OG image is a 1200×630 PNG rendered by the same script (icon + wordmark + tagline). | Link previews on GitHub/Mastodon/Slack otherwise show nothing. |
+
+## 1. Files
+
+| Path | Action | Purpose |
+|---|---|---|
+| `site/src/pages/index.astro` | replace | The page (§3) |
+| `site/src/components/MenuBar.astro` | create | Inline SVG menu-bar mock-up (§3.4) |
+| `site/src/styles/site.css` | create | All styling (§4) |
+| `site/public/screens/{cpu,memory,gpu,network,settings}.png` | create | Screenshots (§3.7) |
+| `site/public/favicon.svg`, `site/public/favicon-32.png`, `site/public/apple-touch-icon.png`, `site/public/og.png` | create (generated) | Icon assets for the site (§7.3) |
+| `Resources/AppIcon.svg` | create | Icon master (§5) |
+| `Resources/AppIcon.icns` | create (generated) | App icon (§6) |
+| `Scripts/render-icon.swift` | create | Rasteriser (§6.1) |
+| `Scripts/make-icon.sh` | create | Runs the rasteriser, `iconutil`, copies site assets (§6.2) |
+| `Scripts/Host-Info.plist.template` | modify | `CFBundleIconFile` (§7.1) |
+| `Scripts/package-app.sh` | modify | Copy the `.icns` (§7.1) |
+| `Scripts/check-bundle.sh` | modify | Assert the icon is in the bundle (§7.1) |
+| `Scripts/make-dmg.sh` | replace | Volume icon (§7.2) |
+| `Scripts/tests/test-icon.sh` | create | Mechanical icon checks (§9.2) |
+
+Every new Swift/shell file starts with the SPDX line per the plan's global constraints.
+
+## 2. Page content and copy
+
+Single page, `lang="en"`, in this order. Copy is final; curly quotes and the `…` character are literal.
+
+1. **Header / hero**
+   - Eyebrow (small caps style): `Free · Open source · Apple Silicon`
+   - `h1`: `mtats`
+   - Tagline (`p.tagline`): `Mac stats you wear on your sleeve.`
+   - Lede (`p.lede`): `CPU, memory, GPU and network, right in the menu bar. For Apple Silicon Macs running macOS 14 or later.`
+2. **Menu-bar mock-up** (§3.4), `aria-label="The macOS menu bar showing mtats: CPU 12%, memory 61%, GPU 8%, network down 1.2 MB/s and up 84 KB/s"`.
+3. **Download** (`section#download`), data-bound from `latest.json`:
+   - Button (`a.button`, `href="/download"`): `Download mtats <version>`
+   - Meta line: `<size> MB · macOS <minOS> or later · <date>` where size = `sizeBytes/1048576` to one decimal, minOS = `minimumSystemVersion` with a trailing `.0` removed, date = `publishedAt` as `en-US` long date in UTC (`October 12, 2026`).
+   - Trust line: `Signed with a Developer ID and notarized by Apple, so macOS opens it without any Gatekeeper workaround.` followed by a link `Also on GitHub Releases` → `https://github.com/marvinmarnold/mtats/releases/tag/v<version>`.
+   - `<details>` with `<summary>Verify the download</summary>`: `Run this in Terminal and compare the output with the checksum below.` then a `<pre><code>` block `shasum -a 256 ~/Downloads/mtats-<version>.dmg` and a second `<code class="sha">` containing the 64-hex `sha256`.
+   - Bootstrap state (no `latest.json`): the button, meta, trust line and details are replaced by `<p class="soon">The first release is on its way.</p>` and a link `Watch the repository on GitHub` → `https://github.com/marvinmarnold/mtats`. The string `first release is on its way` is kept verbatim because Task 17 Step 5 greps for it.
+4. **Install** (`section#install`, `h2` `Install in three steps`), ordered list:
+   1. `Open the downloaded DMG.`
+   2. `Drag mtats to Applications.`
+   3. `Open mtats from Applications. macOS asks once whether to open an app downloaded from the internet; click Open. Nothing to override in System Settings.`
+   Then `p`: `mtats lives in the menu bar and has no Dock icon. Updates arrive through the app itself: Settings → Check for Updates…, or automatically once a day.`
+5. **Screenshots** (`section#screenshots`, `h2` `What you get`): five figures (§3.7) with captions `CPU`, `Memory`, `GPU`, `Network`, `Settings`.
+6. **Privacy** (`section#privacy`, `h2` `Privacy`):
+   `No telemetry, no crash reporting, no accounts. mtats makes exactly two kinds of outbound request: a daily update check against mtats.app (turn it off in Settings) and an optional public-IP lookup against api.ipify.org or icanhazip.com (on by default; turn it off in Settings). Nothing else leaves your Mac.`
+7. **Open source and plugins** (`section#open`, `h2` `Open source, pluggable`):
+   `mtats is MIT-licensed. Every widget, including the four built in, is a plugin loaded through the same mechanism, so you can write your own. Plugins run with the app's privileges; mtats asks before loading a third-party plugin for the first time.` followed by a link `Read the source on GitHub` → `https://github.com/marvinmarnold/mtats`.
+8. **Footer**: `Source on GitHub (MIT)` · `Releases` · `Current version <version>` (omitted in bootstrap) · `© <build year> The mtats contributors`.
+
+## 3. Page implementation
+
+### 3.1 `site/src/pages/index.astro`
+
+```astro
+---
+// SPDX-License-Identifier: MIT
+import { readFileSync } from 'node:fs';
+import '../styles/site.css';
+import MenuBar from '../components/MenuBar.astro';
+
+// Resolved by Vite at build time, so a missing file (pre-first-release bootstrap) yields no entry
+// instead of an error. (import.meta.url would point into the bundle, not src/.)
+const files = import.meta.glob('../data/latest.json', { eager: true }) as Record<string, { default: any }>;
+const latest = Object.values(files)[0]?.default ?? null;
+const mb = latest ? (latest.sizeBytes / 1048576).toFixed(1) : null;
+const date = latest
+  ? new Date(latest.publishedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
+  : null;
+const minOS = latest ? String(latest.minimumSystemVersion).replace(/\.0$/, '') : '14';
+const repo = 'https://github.com/marvinmarnold/mtats';
+const releaseURL = latest ? `${repo}/releases/tag/v${latest.version}` : `${repo}/releases`;
+const year = new Date().getUTCFullYear();
+
+// Screenshots are 2x PNGs; read the IHDR so width/height attributes always match the file.
+function png(path: string) {
+  const b = readFileSync(new URL(`../../public${path}`, import.meta.url));
+  return { src: path, w: b.readUInt32BE(16) / 2, h: b.readUInt32BE(20) / 2 };
+}
+const screens = [
+  { ...png('/screens/cpu.png'), caption: 'CPU', alt: 'CPU dropdown: total usage and one bar per core' },
+  { ...png('/screens/memory.png'), caption: 'Memory', alt: 'Memory dropdown: used percentage and wired, active, inactive, compressed and free bytes' },
+  { ...png('/screens/gpu.png'), caption: 'GPU', alt: 'GPU dropdown: utilization percentage' },
+  { ...png('/screens/network.png'), caption: 'Network', alt: 'Network dropdown: download and upload rates, local and public IP, per-interface rates' },
+  { ...png('/screens/settings.png'), caption: 'Settings', alt: 'Settings window: widget toggles, refresh interval, launch at login, public IP lookup, update controls' },
+];
+const description = 'A free, open-source menu-bar monitor for CPU, memory, GPU and network on Apple Silicon Macs.';
+---
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#FFFFFF" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0C0F13" />
+    <title>mtats — Mac stats you wear on your sleeve</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href="https://mtats.app/" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://mtats.app/" />
+    <meta property="og:title" content="mtats — Mac stats you wear on your sleeve" />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="https://mtats.app/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <header class="hero">
+      <p class="eyebrow">Free · Open source · Apple Silicon</p>
+      <h1>mtats</h1>
+      <p class="tagline">Mac stats you wear on your sleeve.</p>
+      <p class="lede">CPU, memory, GPU and network, right in the menu bar. For Apple Silicon Macs running macOS 14 or later.</p>
+    </header>
+    <main>
+      <section class="wide" aria-label="Menu bar preview" id="menubar">
+        <MenuBar />
+      </section>
+      <section id="download" aria-labelledby="download-h">
+        <h2 id="download-h" class="visually-hidden">Download</h2>
+        {latest ? (
+          <>
+            <a class="button" href="/download">Download mtats {latest.version}</a>
+            <p class="meta">{mb} MB · macOS {minOS} or later · {date}</p>
+            <p class="trust">Signed with a Developer ID and notarized by Apple, so macOS opens it without any Gatekeeper workaround. <a href={releaseURL}>Also on GitHub Releases</a></p>
+            <details class="verify">
+              <summary>Verify the download</summary>
+              <p>Run this in Terminal and compare the output with the checksum below.</p>
+              <pre><code>shasum -a 256 ~/Downloads/mtats-{latest.version}.dmg</code></pre>
+              <code class="sha">{latest.sha256}</code>
+            </details>
+          </>
+        ) : (
+          <>
+            <p class="soon">The first release is on its way.</p>
+            <p class="trust"><a href={repo}>Watch the repository on GitHub</a></p>
+          </>
+        )}
+      </section>
+      <section id="install" aria-labelledby="install-h">
+        <h2 id="install-h">Install in three steps</h2>
+        <ol class="steps">
+          <li>Open the downloaded DMG.</li>
+          <li>Drag mtats to Applications.</li>
+          <li>Open mtats from Applications. macOS asks once whether to open an app downloaded from the internet; click Open. Nothing to override in System Settings.</li>
+        </ol>
+        <p>mtats lives in the menu bar and has no Dock icon. Updates arrive through the app itself: Settings → Check for Updates…, or automatically once a day.</p>
+      </section>
+      <section id="screenshots" class="wide" aria-labelledby="screens-h">
+        <h2 id="screens-h">What you get</h2>
+        <div class="screens">
+          {screens.map((s) => (
+            <figure>
+              <img src={s.src} width={s.w} height={s.h} alt={s.alt} loading="lazy" decoding="async" />
+              <figcaption>{s.caption}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </section>
+      <section id="privacy" aria-labelledby="privacy-h">
+        <h2 id="privacy-h">Privacy</h2>
+        <p>No telemetry, no crash reporting, no accounts. mtats makes exactly two kinds of outbound request: a daily update check against mtats.app (turn it off in Settings) and an optional public-IP lookup against api.ipify.org or icanhazip.com (on by default; turn it off in Settings). Nothing else leaves your Mac.</p>
+      </section>
+      <section id="open" aria-labelledby="open-h">
+        <h2 id="open-h">Open source, pluggable</h2>
+        <p>mtats is MIT-licensed. Every widget, including the four built in, is a plugin loaded through the same mechanism, so you can write your own. Plugins run with the app's privileges; mtats asks before loading a third-party plugin for the first time. <a href={repo}>Read the source on GitHub</a></p>
+      </section>
+    </main>
+    <footer>
+      <a href={repo}>Source on GitHub (MIT)</a>
+      <span aria-hidden="true">·</span>
+      <a href={`${repo}/releases`}>Releases</a>
+      {latest && <><span aria-hidden="true">·</span><span>Current version {latest.version}</span></>}
+      <span aria-hidden="true">·</span>
+      <span>© {year} The mtats contributors</span>
+    </footer>
+  </body>
+</html>
+```
+
+### 3.2 Layout
+
+- One column. `main > section` and `header` are centred with `max-width: 44rem` (704 px) and `padding-inline: var(--s-5)`; sections with class `wide` (mock-up, screenshots) use `max-width: 60rem` (960 px).
+- Vertical rhythm: `header` has `padding-block: var(--s-16) var(--s-8)`; sections are separated by `margin-block-start: var(--s-16)`; the footer has `margin-block-start: var(--s-24)` and `padding-block: var(--s-8)`.
+- Below `40rem` viewport width: section spacing drops to `var(--s-12)`, header top padding to `var(--s-12)`, the download button becomes full-width (`display: flex; width: 100%`), and the screenshot grid is a single column.
+- The page never scrolls horizontally: `html { overflow-x: hidden }` is **not** used; instead every wide element has `max-width: 100%`, the SVG mock-up scales with `width: 100%; height: auto`, images have `max-width: 100%; height: auto`, and the SHA code uses `overflow-wrap: anywhere`.
+
+### 3.3 Typography
+
+System stack only: `--font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;`. Base `font-size: 100%` (16 px), `line-height: 1.55`, `-webkit-font-smoothing: antialiased` only in dark mode.
+
+| Role | Size | Weight | Line-height | Letter-spacing |
+|---|---|---|---|---|
+| `h1` | `clamp(3rem, 2.25rem + 3vw, 4.5rem)` | 700 | 1.0 | -0.03em |
+| `.tagline` | `clamp(1.375rem, 1.1rem + 1.2vw, 1.75rem)` | 500 | 1.3 | -0.01em |
+| `.eyebrow` | 0.8125rem | 600 | 1.4 | 0.08em, `text-transform: uppercase` |
+| `.lede`, body `p`, `li` | 1.0625rem | 400 | 1.55 | 0 |
+| `h2` | 1.5rem | 600 | 1.25 | -0.01em |
+| `.button` | 1.0625rem | 600 | 1 | 0 |
+| `.meta`, `.trust`, `figcaption`, footer | 0.9375rem | 400 | 1.5 | 0 |
+| `code`, `.sha` | 0.875rem `--mono` | 400 | 1.6 | 0 |
+
+### 3.4 `site/src/components/MenuBar.astro`
+
+A 460×64 drawing at 1 unit = 1 pt, displayed at 2× (CSS `width: 100%` of a 920 px-max box). It shows a dark macOS menu bar over a sliver of desktop. Fonts are the system stack; glyphs are the app's own: the CPU and memory chips approximate SF Symbols `cpu` and `memorychip`, the GPU glyph is `GPUGlyph` from `Sources/GPUCore/GPUWidgetView.swift` transcribed with `u = 13/16`, and the network rows use the app's blue/orange arrows at 9 pt. Values are illustrative.
+
+```astro
+---
+// SPDX-License-Identifier: MIT
+// Menu-bar mock-up at 1 unit = 1 pt, shown at 2x. Glyph geometry mirrors the app's own views.
+---
+<svg class="menubar" viewBox="0 0 460 64" width="920" height="128" role="img"
+     aria-label="The macOS menu bar showing mtats: CPU 12%, memory 61%, GPU 8%, network down 1.2 MB/s and up 84 KB/s"
+     font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif"
+     style="font-variant-numeric: tabular-nums">
+  <defs>
+    <linearGradient id="desk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3B4C6B"/><stop offset="1" stop-color="#1F2A3F"/>
+    </linearGradient>
+    <clipPath id="screen"><rect x="0" y="0" width="460" height="64" rx="10"/></clipPath>
+  </defs>
+  <g clip-path="url(#screen)">
+    <rect x="0" y="0" width="460" height="64" fill="url(#desk)"/>
+    <rect x="0" y="0" width="460" height="24" fill="#1D1D1F"/>
+    <!-- left: app menus -->
+    <g fill="#F2F2F7" font-size="11" font-weight="500">
+      <text x="12" y="16" font-weight="700">Finder</text>
+      <text x="62" y="16">File</text>
+      <text x="94" y="16">Edit</text>
+      <text x="124" y="16">View</text>
+    </g>
+    <!-- CPU -->
+    <g transform="translate(196 5.5)" fill="none" stroke="#F2F2F7" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
+      <g transform="scale(0.8125)">
+        <rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/>
+        <rect x="6" y="6" width="4" height="4" rx="0.5" stroke-width="1"/>
+        <path d="M5.5 1.5v2M8 1.5v2M10.5 1.5v2M5.5 12.5v2M8 12.5v2M10.5 12.5v2M1.5 5.5h2M1.5 8h2M1.5 10.5h2M12.5 5.5h2M12.5 8h2M12.5 10.5h2"/>
+      </g>
+    </g>
+    <text x="213" y="16" fill="#F2F2F7" font-size="11" font-weight="500">12%</text>
+    <!-- Memory -->
+    <g transform="translate(247 5.5)" fill="none" stroke="#F2F2F7" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
+      <g transform="scale(0.8125)">
+        <rect x="1.5" y="4" width="13" height="7" rx="1.5"/>
+        <path d="M4.5 6.5v2M8 6.5v2M11.5 6.5v2" stroke-width="1.6"/>
+        <path d="M3.5 11v2.5M6 11v2.5M8.5 11v2.5M11 11v2.5M13 11v2.5" stroke-width="1"/>
+      </g>
+    </g>
+    <text x="264" y="16" fill="#F2F2F7" font-size="11" font-weight="500">61%</text>
+    <!-- GPU: GPUGlyph with u = 13/16 -->
+    <g transform="translate(298 5.5) scale(0.8125)" fill="none" stroke="#F2F2F7" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="1" y="3.5" width="14" height="8" rx="1.5"/>
+      <circle cx="8.5" cy="7.5" r="2.3"/>
+      <circle cx="8.5" cy="7.5" r="0.8" fill="#F2F2F7" stroke="none"/>
+      <path d="M3 11.5v2.5"/>
+      <path d="M5 13.5h8" stroke-width="1.1" stroke-dasharray="1.2 1.4"/>
+    </g>
+    <text x="315" y="16" fill="#F2F2F7" font-size="11" font-weight="500">8%</text>
+    <!-- Network: two 9pt rows -->
+    <g fill="none" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M347 3.5v6M344.5 7l2.5 2.5L349.5 7" stroke="#0A84FF"/>
+      <path d="M347 20.5v-6M344.5 17l2.5-2.5L349.5 17" stroke="#FF9F0A"/>
+    </g>
+    <g fill="#F2F2F7" font-size="9" font-weight="500">
+      <text x="353" y="10.5">1.2 MB/s</text>
+      <text x="353" y="20.5">84 KB/s</text>
+    </g>
+    <!-- clock -->
+    <text x="452" y="16" fill="#F2F2F7" font-size="11" font-weight="500" text-anchor="end">Fri 9:41</text>
+  </g>
+</svg>
+```
+
+Rendering rules: the SVG keeps its own dark colours in both themes (it depicts a dark menu bar). The `width`/`height` attributes are overridden by CSS (`.menubar { width: 100%; height: auto; max-width: 920px; display: block; margin-inline: auto; border-radius: 10px; box-shadow: var(--shadow) }`) and exist only to prevent layout shift.
+
+### 3.5 Download block presentation
+
+- The button is the single visual focal point below the mock-up: accent fill, 3 rem tall, 0.75 rem radius, inline-flex, `padding-inline: 1.5rem`, `gap: .5rem`, with a leading 1 rem download glyph drawn inline: `<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M2.5 13.5h11"/></svg>` placed before the label text inside `a.button` (add it to the markup in §3.1 as the first child of the anchor).
+- Hover: background `--accent-hover`; active: `transform: translateY(1px)`; focus-visible: `outline: 3px solid var(--accent); outline-offset: 3px`.
+- `.meta` is `--muted`, directly under the button with `margin-block-start: var(--s-3)`. `.trust` follows with `margin-block-start: var(--s-2)`.
+- `.verify` (`details`) sits under them with a `--card` background, 0.75 rem radius, `padding: var(--s-4)`; `summary` is a link-coloured, cursor-pointer line; `.sha` renders as a block in the mono font with `overflow-wrap: anywhere; user-select: all`.
+- `.soon` (bootstrap) is a pill: `display: inline-block; padding: .75rem 1.25rem; border-radius: 999px; background: var(--card); color: var(--muted)`.
+- The section is left-aligned like the rest of the page (no centred hero); on narrow screens the button stretches to full width.
+
+### 3.6 Install, privacy, open-source sections
+
+- `ol.steps` uses a custom counter: each `li` has `padding-inline-start: 2.5rem; position: relative`, a `::before` circle 1.75 rem in diameter with the number, `background: var(--card); border: 1px solid var(--border); font-weight: 600; font-size: .875rem`, items separated by `var(--s-3)`.
+- Privacy and open-source sections are plain prose; links use `--link` with `text-decoration: underline; text-underline-offset: .15em` (always underlined, so colour is not the only cue).
+
+### 3.7 Screenshots
+
+- Capture from the owner's real release build in the **dark** appearance on a 2× display with `screencapture -i -o -t png <file>` (interactive region, no window shadow): one of each dropdown (`cpu`, `memory`, `gpu`, `network`) including the popover chrome, and the Settings window.
+- Output files: `site/public/screens/cpu.png`, `memory.png`, `gpu.png`, `network.png`, `settings.png`. Each ≤ 200 000 bytes (`stat -f%z`). Dropdowns are the app's 260 pt detail view, so their pixel width is 520–560 px (chrome included); Settings is ≤ 1200 px wide. If a file exceeds the budget, reduce colours with `sips -s format png --setProperty formatOptions default` after `sips -Z 1200` or re-capture with fewer rows; never exceed 1200 px width.
+- Grid: `.screens { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--s-6) }`; each `figure` has `margin: 0`; `img` has `width: 100%; height: auto; border-radius: 12px; box-shadow: var(--shadow)`; `figcaption` is `--muted`, `margin-block-start: var(--s-2)`.
+- `width`/`height` attributes come from the PNG header (§3.1) and are the 1× CSS size, so the grid reserves space before images load.
+
+## 4. `site/src/styles/site.css`
+
+```css
+/* SPDX-License-Identifier: MIT */
+:root {
+  color-scheme: light;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --bg: #FFFFFF;
+  --card: #F4F5F7;
+  --code: #EEF0F3;
+  --text: #111418;
+  --muted: #5B6470;
+  --border: #D9DEE4;
+  --link: #136C37;
+  --accent: #15803D;
+  --accent-hover: #136C37;
+  --on-accent: #FFFFFF;
+  --shadow: 0 1px 2px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.08);
+  --s-1: .25rem; --s-2: .5rem; --s-3: .75rem; --s-4: 1rem; --s-5: 1.25rem; --s-6: 1.5rem;
+  --s-8: 2rem; --s-12: 3rem; --s-16: 4rem; --s-24: 6rem;
+  --measure: 44rem; --wide: 60rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0C0F13;
+    --card: #161A20;
+    --code: #1C2129;
+    --text: #EDEFF2;
+    --muted: #9AA3AF;
+    --border: #2A3038;
+    --link: #4ADE80;
+    --accent: #4ADE80;
+    --accent-hover: #86EFAC;
+    --on-accent: #06250F;
+    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 8px 24px rgba(0,0,0,.45);
+  }
+  body { -webkit-font-smoothing: antialiased; }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { font-size: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 1.0625rem; line-height: 1.55;
+  text-rendering: optimizeLegibility;
+}
+img { max-width: 100%; height: auto; display: block; }
+a { color: var(--link); text-decoration: underline; text-underline-offset: .15em; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+code, pre { font-family: var(--mono); font-size: .875rem; line-height: 1.6; }
+pre { background: var(--code); padding: var(--s-3) var(--s-4); border-radius: .5rem; overflow-x: auto; margin: var(--s-3) 0; }
+
+.hero, main > section, footer { width: 100%; max-width: var(--measure); margin-inline: auto; padding-inline: var(--s-5); }
+main > section.wide { max-width: var(--wide); }
+.hero { padding-block: var(--s-16) var(--s-8); }
+main > section { margin-block-start: var(--s-16); }
+#menubar { margin-block-start: var(--s-4); }
+footer { margin-block-start: var(--s-24); padding-block: var(--s-8); color: var(--muted); font-size: .9375rem;
+  display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-3); border-top: 1px solid var(--border); }
+footer a { color: var(--muted); }
+
+.eyebrow { margin: 0 0 var(--s-4); font-size: .8125rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font-size: clamp(3rem, 2.25rem + 3vw, 4.5rem); font-weight: 700; line-height: 1; letter-spacing: -.03em; }
+.tagline { margin: var(--s-3) 0 0; font-size: clamp(1.375rem, 1.1rem + 1.2vw, 1.75rem); font-weight: 500; line-height: 1.3; letter-spacing: -.01em; }
+.lede { margin: var(--s-4) 0 0; color: var(--muted); max-width: 36rem; }
+h2 { margin: 0 0 var(--s-4); font-size: 1.5rem; font-weight: 600; line-height: 1.25; letter-spacing: -.01em; }
+p { margin: 0 0 var(--s-3); }
+p:last-child { margin-block-end: 0; }
+
+.menubar { display: block; width: 100%; height: auto; max-width: 920px; margin-inline: auto; border-radius: 10px; box-shadow: var(--shadow); }
+
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2);
+  min-height: 3rem; padding: 0 var(--s-6); border-radius: .75rem;
+  background: var(--accent); color: var(--on-accent); font-weight: 600; font-size: 1.0625rem; line-height: 1;
+  text-decoration: none; transition: background-color .15s ease;
+}
+.button:hover { background: var(--accent-hover); text-decoration: none; }
+.button:active { transform: translateY(1px); }
+.meta { margin-block-start: var(--s-3); color: var(--muted); font-size: .9375rem; }
+.trust { margin-block-start: var(--s-2); font-size: .9375rem; }
+.verify { margin-block-start: var(--s-4); background: var(--card); border-radius: .75rem; padding: var(--s-4); font-size: .9375rem; }
+.verify summary { cursor: pointer; color: var(--link); font-weight: 500; }
+.verify p { margin-block-start: var(--s-3); }
+.sha { display: block; overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; }
+.soon { display: inline-block; padding: var(--s-3) var(--s-5); border-radius: 999px; background: var(--card); color: var(--muted); }
+
+.steps { margin: 0 0 var(--s-4); padding: 0; list-style: none; counter-reset: step; }
+.steps li { position: relative; padding-inline-start: 2.5rem; counter-increment: step; }
+.steps li + li { margin-block-start: var(--s-3); }
+.steps li::before {
+  content: counter(step); position: absolute; left: 0; top: .05em;
+  width: 1.75rem; height: 1.75rem; border-radius: 50%; display: grid; place-items: center;
+  background: var(--card); border: 1px solid var(--border); font-size: .875rem; font-weight: 600;
+}
+
+.screens { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--s-6); }
+.screens figure { margin: 0; }
+.screens img { border-radius: 12px; box-shadow: var(--shadow); }
+.screens figcaption { margin-block-start: var(--s-2); color: var(--muted); font-size: .9375rem; }
+
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+@media (max-width: 40rem) {
+  .hero { padding-block: var(--s-12) var(--s-6); }
+  main > section { margin-block-start: var(--s-12); }
+  .button { display: flex; width: 100%; }
+  .screens { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+```
+
+Colour tokens and the contrast each pair must meet (WCAG 2.x relative luminance; computed values rounded to 2 dp):
+
+| Pair | Light | Ratio | Dark | Ratio |
+|---|---|---|---|---|
+| text on bg | `#111418` / `#FFFFFF` | 18.47 | `#EDEFF2` / `#0C0F13` | 16.67 |
+| text on card | `#111418` / `#F4F5F7` | 16.93 | `#EDEFF2` / `#161A20` | 15.16 |
+| muted on bg | `#5B6470` / `#FFFFFF` | 6.00 | `#9AA3AF` / `#0C0F13` | 7.53 |
+| muted on card | `#5B6470` / `#F4F5F7` | 5.50 | `#9AA3AF` / `#161A20` | 6.84 |
+| link on bg | `#136C37` / `#FFFFFF` | 6.51 | `#4ADE80` / `#0C0F13` | 11.02 |
+| link on card | `#136C37` / `#F4F5F7` | 5.96 | `#4ADE80` / `#161A20` | 10.02 |
+| button text on button | `#FFFFFF` / `#15803D` | 5.02 | `#06250F` / `#4ADE80` | 9.42 |
+| button on bg (non-text, ≥ 3) | `#15803D` / `#FFFFFF` | 5.02 | `#4ADE80` / `#0C0F13` | 11.02 |
+| focus ring on bg (≥ 3) | `#15803D` / `#FFFFFF` | 5.02 | `#4ADE80` / `#0C0F13` | 11.02 |
+| code text on code bg | `#111418` / `#EEF0F3` | 16.18 | `#EDEFF2` / `#1C2129` | 14.03 |
+| mock-up text on bar | `#F2F2F7` / `#1D1D1F` | 15.08 | same | 15.08 |
+| mock-up blue arrow on bar (≥ 3) | `#0A84FF` / `#1D1D1F` | 4.61 | same | 4.61 |
+| mock-up orange arrow on bar (≥ 3) | `#FF9F0A` / `#1D1D1F` | 8.19 | same | 8.19 |
+
+Borders (`--border`) are decorative; every bordered element also has a fill that differs from the page background, so no border carries meaning.
+
+## 5. App icon: vector construction
+
+Canvas 1024×1024, `viewBox="0 0 1024 1024"`, y down. The macOS icon grid: the rounded square occupies 824×824 at (100,100) (Apple's standard 100 px safe margin); corner radius 186 approximates the system squircle. Everything outside the rounded square is transparent.
+
+| Constant | Value |
+|---|---|
+| Squircle | x 100, y 100, w 824, h 824, rx = ry = 186 |
+| Background gradient | linear, top (y 100) `#2C3645` → bottom (y 924) `#151B24` |
+| Highlight | ellipse cx 512, cy 160, rx 520, ry 240, `#FFFFFF` at 6 % opacity, clipped to the squircle |
+| Band shadow | rounded rect x 192, y 388, w 640, h 280, rx 64, `#000000` at 28 % opacity |
+| Band (the cuff) | rounded rect x 192, y 372, w 640, h 280, rx 64, fill `#F2F4F7` |
+| Sparkline | polyline (300,552) (392,484) (484,524) (576,440) (668,490) (736,432), stroke `#15803D`, width 56, round caps and joins, no fill |
+
+The sparkline stays inside the band with ≥ 28 px clearance on every side (band interior x 192–832, y 372–652; stroke extents x 272–764, y 404–580). Green on band contrast 4.55; band on background ≥ 15.
+
+`Resources/AppIcon.svg` (verbatim; also copied to `site/public/favicon.svg`):
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- SPDX-License-Identifier: MIT -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2C3645"/>
+      <stop offset="1" stop-color="#151B24"/>
+    </linearGradient>
+    <clipPath id="squircle"><rect x="100" y="100" width="824" height="824" rx="186" ry="186"/></clipPath>
+  </defs>
+  <g clip-path="url(#squircle)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#bg)"/>
+    <ellipse cx="512" cy="160" rx="520" ry="240" fill="#FFFFFF" fill-opacity="0.06"/>
+    <rect x="192" y="388" width="640" height="280" rx="64" ry="64" fill="#000000" fill-opacity="0.28"/>
+    <rect x="192" y="372" width="640" height="280" rx="64" ry="64" fill="#F2F4F7"/>
+    <polyline points="300,552 392,484 484,524 576,440 668,490 736,432" fill="none" stroke="#15803D" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
+```
+
+## 6. Rasterising the icon
+
+Tools assumed: `swift` (Command Line Tools) and `/usr/bin/iconutil` (part of macOS). `sips` is used only in checks. `rsvg-convert` is not used anywhere.
+
+### 6.1 `Scripts/render-icon.swift`
+
+Draws the §5 primitives with CoreGraphics (same coordinates; the context is flipped so SVG coordinates apply verbatim) and writes every PNG the project needs.
+
+```swift
+// SPDX-License-Identifier: MIT
+// Usage: swift Scripts/render-icon.swift <out-dir>
+// Writes <out-dir>/AppIcon.iconset/*.png (10 members), favicon-32.png, apple-touch-icon.png (180), og.png (1200x630).
+// Same primitives and constants as Resources/AppIcon.svg; keep the two in sync.
+import AppKit
+
+let K: CGFloat = 1024
+let space = CGColorSpace(name: CGColorSpace.sRGB)!
+func rgb(_ h: UInt32, _ a: CGFloat = 1) -> CGColor {
+    CGColor(colorSpace: space, components: [CGFloat((h >> 16) & 0xFF) / 255, CGFloat((h >> 8) & 0xFF) / 255, CGFloat(h & 0xFF) / 255, a])!
+}
+func rrect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ r: CGFloat) -> CGPath {
+    CGPath(roundedRect: CGRect(x: x, y: y, width: w, height: h), cornerWidth: r, cornerHeight: r, transform: nil)
+}
+
+/// Draws the icon with its top-left at `origin` (in the context's y-up pixel space), `size` pixels square.
+func drawIcon(_ c: CGContext, size: CGFloat, origin: CGPoint) {
+    c.saveGState()
+    c.translateBy(x: origin.x, y: origin.y)
+    c.scaleBy(x: size / K, y: size / K)
+    c.translateBy(x: 0, y: K); c.scaleBy(x: 1, y: -1)        // SVG coordinates from here on
+    c.addPath(rrect(100, 100, 824, 824, 186)); c.clip()
+    let grad = CGGradient(colorsSpace: space, colors: [rgb(0x2C3645), rgb(0x151B24)] as CFArray, locations: [0, 1])!
+    c.drawLinearGradient(grad, start: CGPoint(x: 512, y: 100), end: CGPoint(x: 512, y: 924), options: [])
+    c.setFillColor(rgb(0xFFFFFF, 0.06)); c.fillEllipse(in: CGRect(x: -8, y: -80, width: 1040, height: 480))
+    c.setFillColor(rgb(0x000000, 0.28)); c.addPath(rrect(192, 388, 640, 280, 64)); c.fillPath()
+    c.setFillColor(rgb(0xF2F4F7));       c.addPath(rrect(192, 372, 640, 280, 64)); c.fillPath()
+    let pts = [(300, 552), (392, 484), (484, 524), (576, 440), (668, 490), (736, 432)].map { CGPoint(x: $0.0, y: $0.1) }
+    c.setStrokeColor(rgb(0x15803D)); c.setLineWidth(56); c.setLineCap(.round); c.setLineJoin(.round)
+    c.addLines(between: pts); c.strokePath()
+    c.restoreGState()
+}
+
+func render(width: Int, height: Int, _ draw: (CGContext) -> Void) -> Data {
+    let c = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                      space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    c.clear(CGRect(x: 0, y: 0, width: width, height: height))
+    c.setShouldAntialias(true); c.setAllowsAntialiasing(true)
+    draw(c)
+    return NSBitmapImageRep(cgImage: c.makeImage()!).representation(using: .png, properties: [:])!
+}
+
+func write(_ data: Data, _ path: String) throws {
+    try data.write(to: URL(fileURLWithPath: path)); print("wrote \(path)")
+}
+
+let out = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ".build/icon"
+let iconset = "\(out)/AppIcon.iconset"
+try FileManager.default.createDirectory(atPath: iconset, withIntermediateDirectories: true)
+
+let members: [(String, Int)] = [
+    ("icon_16x16", 16), ("icon_16x16@2x", 32), ("icon_32x32", 32), ("icon_32x32@2x", 64),
+    ("icon_128x128", 128), ("icon_128x128@2x", 256), ("icon_256x256", 256), ("icon_256x256@2x", 512),
+    ("icon_512x512", 512), ("icon_512x512@2x", 1024),
+]
+for (name, px) in members {
+    try write(render(width: px, height: px) { drawIcon($0, size: CGFloat(px), origin: .zero) }, "\(iconset)/\(name).png")
+}
+try write(render(width: 32, height: 32) { drawIcon($0, size: 32, origin: .zero) }, "\(out)/favicon-32.png")
+try write(render(width: 180, height: 180) { drawIcon($0, size: 180, origin: .zero) }, "\(out)/apple-touch-icon.png")
+
+// Open Graph card: dark ground, icon at left, wordmark and tagline at right.
+try write(render(width: 1200, height: 630) { c in
+    c.setFillColor(rgb(0x0E1218)); c.fill(CGRect(x: 0, y: 0, width: 1200, height: 630))
+    drawIcon(c, size: 400, origin: CGPoint(x: 120, y: 115))
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: c, flipped: false)
+    let title = NSAttributedString(string: "mtats", attributes: [
+        .font: NSFont.systemFont(ofSize: 120, weight: .bold),
+        .foregroundColor: NSColor(cgColor: rgb(0xEDEFF2))!, .kern: -3.0])
+    let tagline = NSAttributedString(string: "Mac stats you wear on your sleeve.", attributes: [
+        .font: NSFont.systemFont(ofSize: 44, weight: .regular),
+        .foregroundColor: NSColor(cgColor: rgb(0x9AA3AF))!])
+    title.draw(at: NSPoint(x: 560, y: 330))
+    tagline.draw(at: NSPoint(x: 560, y: 250))
+    NSGraphicsContext.restoreGraphicsState()
+}, "\(out)/og.png")
+```
+
+Notes for the implementer: `swift <file>` runs the script with the interpreter; no package, no Xcode project. `CGContext(data: nil, …)` memory is cleared explicitly, so the squircle's corners are transparent. `icon_16x16@2x.png` and `icon_32x32.png` are byte-identical by design (both 32 px); `iconutil` requires both names.
+
+### 6.2 `Scripts/make-icon.sh`
+
+```bash
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# Renders Resources/AppIcon.icns and the site's icon assets from Scripts/render-icon.swift.
+# Resources/AppIcon.svg is the human-readable master of the same drawing (used as the SVG favicon).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+OUT=.build/icon
+rm -rf "$OUT"
+swift Scripts/render-icon.swift "$OUT"
+iconutil -c icns "$OUT/AppIcon.iconset" -o Resources/AppIcon.icns
+cp Resources/AppIcon.svg site/public/favicon.svg
+cp "$OUT/favicon-32.png" "$OUT/apple-touch-icon.png" "$OUT/og.png" site/public/
+echo "icon: Resources/AppIcon.icns and site/public/{favicon.svg,favicon-32.png,apple-touch-icon.png,og.png} written"
+```
+
+Outputs are committed (`Resources/AppIcon.icns`, the four files under `site/public/`). The script is re-run only when §5 changes.
+
+## 7. Where the icon is referenced
+
+### 7.1 App bundle
+
+- `Scripts/Host-Info.plist.template`: add, after `LSUIElement`: `  <key>CFBundleIconFile</key><string>AppIcon</string>`. (`CFBundleIconName` is not added; it is for asset-catalog icons.)
+- `Scripts/package-app.sh`: after the `cp "$BIN_DIR/libMTatsPluginKit.dylib" …` line add `cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"`. It runs before `sign-app.sh`, so the icon is inside the seal.
+- `Scripts/check-bundle.sh`: before the `PB=/usr/libexec/PlistBuddy` line add
+  `[[ -f "$APP/Contents/Resources/AppIcon.icns" ]] || fail "AppIcon.icns missing from Contents/Resources"` and after the `CFBundleVersion` check add
+  `[[ "$($PB -c 'Print :CFBundleIconFile' "$APP/Contents/Info.plist")" == "AppIcon" ]] || fail "CFBundleIconFile must be AppIcon"`.
+- Sparkle's update window and the first-launch Gatekeeper dialog read the bundle icon automatically; nothing to configure.
+
+### 7.2 DMG volume icon — `Scripts/make-dmg.sh` (full replacement)
+
+The volume icon is the app icon. A compressed image built straight from `-srcfolder` does not carry the root folder's Finder flags, so the DMG is built read-write, decorated on the mounted volume, then converted.
+
+```bash
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# Usage: make-dmg.sh <path/to/mtats.app> <out.dmg>
+# Drag-to-Applications image with the app icon as the volume icon (spec 2026-10-17 §7.2).
+set -euo pipefail
+APP="$1"; OUT="$2"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")
+STAGE=$(mktemp -d); MNT=$(mktemp -d); RW="$STAGE.rw.dmg"
+cleanup() { hdiutil detach -quiet "$MNT" 2>/dev/null || true; rm -rf "$STAGE" "$MNT" "$RW"; }
+trap cleanup EXIT
+ditto "$APP" "$STAGE/mtats.app"
+ln -s /Applications "$STAGE/Applications"
+cp "$ROOT/Resources/AppIcon.icns" "$STAGE/.VolumeIcon.icns"
+hdiutil create -quiet -volname "mtats $VERSION" -srcfolder "$STAGE" -fs HFS+ -format UDRW -ov "$RW"
+hdiutil attach -quiet -nobrowse -noautoopen -mountpoint "$MNT" "$RW"
+# Finder's kHasCustomIcon flag (0x0400) lives at byte offset 8 of the 32-byte com.apple.FinderInfo attribute.
+xattr -wx com.apple.FinderInfo \
+  "0000000000000000040000000000000000000000000000000000000000000000" "$MNT"
+hdiutil detach -quiet "$MNT"
+rm -f "$OUT"
+hdiutil convert -quiet "$RW" -format UDZO -o "$OUT"
+echo "Created $OUT"
+```
+
+`Scripts/tests/test-make-dmg.sh` gains two assertions after the `Applications` symlink check:
+`[[ -f "$T/mnt/.VolumeIcon.icns" ]] || { echo "  volume icon missing" >&2; exit 1; }` and
+`xattr -px com.apple.FinderInfo "$T/mnt" | tr -d ' \n' | grep -qi '^0000000000000000040' || { echo "  custom-icon flag missing" >&2; exit 1; }`.
+The DMG signing/notarisation steps in the release flow are unchanged: the icon file and the attribute are ordinary volume contents.
+
+### 7.3 Site
+
+`site/public/favicon.svg` (the §5 SVG verbatim), `favicon-32.png`, `apple-touch-icon.png` (180 px), `og.png` (1200×630), referenced from `<head>` as in §3.1. All same-origin.
+
+## 8. Behaviour the page must satisfy
+
+- **No JavaScript.** `dist/index.html` contains no `<script`. Astro is left at its default `inlineStylesheets: 'auto'`; whether the CSS is inlined or linked, it is same-origin.
+- **No external requests.** The only non-`mtats.app` URLs in the HTML are `https://github.com/marvinmarnold/mtats…` hyperlinks (navigations, not resource loads). No `@import`, no `url(http…)`, no fonts, no analytics.
+- **Data binding.** Only the download block and the footer version read `latest.json`; the fields used are `version`, `sizeBytes`, `publishedAt`, `minimumSystemVersion`, `sha256`. `url`, `build`, `channel` are not displayed (the button goes through `/download`, which `write-firebase-json.mjs` already points at the stable DMG).
+- **Themes.** Light by default; dark via `prefers-color-scheme: dark` only. `color-scheme` is set so native controls (`details` marker, scrollbars) follow.
+- **Accessibility.** Heading order h1 → h2 only; every section has an accessible name; the mock-up is a single `role="img"` with the full reading in `aria-label`; screenshots have descriptive `alt`; links are underlined; focus is visible with a 3 px ring at ≥ 3:1; the button is ≥ 48 px tall; all sizes in `rem` so 200 % text zoom reflows without horizontal scroll; `prefers-reduced-motion` disables the one transition. Measured contrasts in §4 all exceed 4.5:1 for text and 3:1 for non-text.
+- **Weight.** `dist/` ≤ 1 MB total (plan Task 18 Step 5), with `og.png` ≤ 150 KB and each screenshot ≤ 200 KB; `check-dist.mjs`'s 2 MB per-file guard stays.
+
+## 9. Acceptance checks
+
+### 9.1 Site (run from `site/`)
+
+```bash
+cp src/data/latest.example.json src/data/latest.json && npm run build
+test "$(grep -c '<script' dist/index.html)" = 0
+grep -q 'Download mtats 0.1.0' dist/index.html
+grep -q '0000000000000000000000000000000000000000000000000000000000000000' dist/index.html   # sha256 rendered
+grep -q '12.0 MB · macOS 14 or later · October 12, 2026' dist/index.html
+grep -oE 'https?://[^"'"'"' <)]+' dist/index.html | grep -vE '^https://(mtats\.app|github\.com/marvinmarnold/mtats)' | grep -v '^http://www.w3.org/2000/svg' ; test $? -eq 1   # no other origins
+grep -q 'og:image" content="https://mtats.app/og.png"' dist/index.html
+grep -q 'aria-label="The macOS menu bar showing mtats' dist/index.html
+test "$(du -sk dist | cut -f1)" -le 1024
+for f in cpu memory gpu network settings; do test "$(stat -f%z public/screens/$f.png)" -le 200000; done
+test "$(stat -f%z public/og.png)" -le 153600
+sips -g pixelWidth -g pixelHeight public/og.png | grep -q 'pixelWidth: 1200' && sips -g pixelHeight public/og.png | grep -q 'pixelHeight: 630'
+cmp ../Resources/AppIcon.svg public/favicon.svg
+rm src/data/latest.json
+MTATS_SITE_BOOTSTRAP=1 npm run build && grep -q 'first release is on its way' dist/index.html && ! grep -q 'href="/download"' dist/index.html
+```
+
+Contrast is verified with the table in §4; recompute with the standard WCAG formula if any token changes (a 20-line Python script with `-I` suffices; no package needed).
+
+Visual check (owner, Task 18 Step 5): `npm run dev`, view at 1280 px and 390 px wide in both appearances; the mock-up reads as a menu bar; the button is the first thing the eye lands on below it.
+
+### 9.2 Icon — `Scripts/tests/test-icon.sh`
+
+```bash
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# Re-renders the icon into a temp dir and checks the iconset members, the committed .icns, and key pixels.
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+fail() { echo "  $*" >&2; exit 1; }
+T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+swift Scripts/render-icon.swift "$T" >/dev/null
+for m in icon_16x16:16 icon_16x16@2x:32 icon_32x32:32 icon_32x32@2x:64 icon_128x128:128 icon_128x128@2x:256 \
+         icon_256x256:256 icon_256x256@2x:512 icon_512x512:512 icon_512x512@2x:1024; do
+  f="$T/AppIcon.iconset/${m%%:*}.png"; px="${m##*:}"
+  [[ -f "$f" ]] || fail "missing $f"
+  [[ "$(sips -g pixelWidth "$f" | awk '/pixelWidth/{print $2}')" == "$px" ]] || fail "$f width != $px"
+  [[ "$(sips -g pixelHeight "$f" | awk '/pixelHeight/{print $2}')" == "$px" ]] || fail "$f height != $px"
+  [[ "$(sips -g hasAlpha "$f" | awk '/hasAlpha/{print $2}')" == "yes" ]] || fail "$f has no alpha channel"
+done
+[[ "$(ls "$T/AppIcon.iconset" | wc -l | tr -d ' ')" == "10" ]] || fail "iconset must have exactly 10 members"
+iconutil -c icns "$T/AppIcon.iconset" -o "$T/AppIcon.icns" || fail "iconutil failed"
+[[ -f Resources/AppIcon.icns ]] || fail "Resources/AppIcon.icns not committed"
+[[ "$(stat -f%z Resources/AppIcon.icns)" -le 1048576 ]] || fail "AppIcon.icns larger than 1 MB"
+iconutil -c iconset Resources/AppIcon.icns -o "$T/roundtrip.iconset" || fail "committed icns does not round-trip"
+[[ -f "$T/roundtrip.iconset/icon_512x512@2x.png" ]] || fail "committed icns lacks the 1024 member"
+# Pixel checks on the 1024 render (SVG coordinates; the probe flips y): transparent corner, band colour, background gradient.
+cat > "$T/probe.swift" <<'EOF'
+import AppKit
+let rep = NSBitmapImageRep(data: try! Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))!
+func px(_ x: Int, _ y: Int) -> (Int, Int, Int, Int) {
+    let c = rep.colorAt(x: x, y: y)!.usingColorSpace(.sRGB)!
+    return (Int((c.redComponent * 255).rounded()), Int((c.greenComponent * 255).rounded()), Int((c.blueComponent * 255).rounded()), Int((c.alphaComponent * 255).rounded()))
+}
+func near(_ a: (Int, Int, Int, Int), _ r: Int, _ g: Int, _ b: Int, _ al: Int, tol: Int) -> Bool {
+    abs(a.0 - r) <= tol && abs(a.1 - g) <= tol && abs(a.2 - b) <= tol && abs(a.3 - al) <= tol
+}
+var ok = true
+if !near(px(2, 2), 0, 0, 0, 0, tol: 0) { print("corner (2,2) not transparent: \(px(2, 2))"); ok = false }
+if !near(px(240, 630), 0xF2, 0xF4, 0xF7, 255, tol: 2) { print("band (240,630) wrong: \(px(240, 630))"); ok = false }
+if !near(px(512, 498), 0x15, 0x80, 0x3D, 255, tol: 2) { print("sparkline (512,498) wrong: \(px(512, 498))"); ok = false }
+if !near(px(512, 200), 0x36, 0x3F, 0x4C, 255, tol: 4) { print("background (512,200) wrong: \(px(512, 200))"); ok = false }
+exit(ok ? 0 : 1)
+EOF
+swift "$T/probe.swift" "$T/AppIcon.iconset/icon_512x512@2x.png" || fail "pixel probe failed"
+echo "icon checks OK"
+```
+
+Expected pixel values: (2,2) fully transparent; (240,630) is inside the band's lower-left corner circle (centre (256,588), r 64) → `#F2F4F7`; (512,498) lies on the sparkline segment (484,524)→(576,440) → `#15803D`; (512,200) is background at gradient position (200−100)/824 = 0.121 blended with the 6 % highlight → `#363F4C` ± 4.
+
+Also: `Scripts/tests/run.sh` picks the new test up automatically; `Scripts/package-app.sh && Scripts/check-bundle.sh .build/mtats.app` passes with the two new assertions; `bash Scripts/tests/test-make-dmg.sh` passes with the two new assertions; Finder shows the icon for `.build/mtats.app` (`Scripts/dev.sh`, owner visual check) and for the mounted DMG.
+
+### 9.3 Build-order note for Task 18
+
+1. Write `Resources/AppIcon.svg`, `Scripts/render-icon.swift`, `Scripts/make-icon.sh`; run `Scripts/make-icon.sh`; commit the outputs.
+2. Apply §7.1 and §7.2; run `Scripts/tests/run.sh`.
+3. Capture screenshots (§3.7).
+4. Write `site.css`, `MenuBar.astro`, `index.astro`; run §9.1.
+5. Commit as plan Task 18 Step 6 says: `git add site Resources Scripts && git commit -m "Site design and app icon"`.

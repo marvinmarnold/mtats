@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# CI exports these into the job environment; the tests must control them.
+unset MTATS_VERSION MTATS_BUILD MTATS_CHANNEL MTATS_IDENTITY
 fail() { echo "  $*" >&2; exit 1; }
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 cd "$T" && git init -q && git config user.email t@t && git config user.name t
