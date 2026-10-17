@@ -1,55 +1,131 @@
 ---
 // SPDX-License-Identifier: MIT
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import '../styles/site.css';
+import MenuBar from '../components/MenuBar.astro';
+
 // Resolved by Vite at build time, so a missing file (pre-first-release bootstrap) yields no entry
 // instead of an error. (import.meta.url would point into the bundle, not src/.)
 const files = import.meta.glob('../data/latest.json', { eager: true }) as Record<string, { default: any }>;
 const latest = Object.values(files)[0]?.default ?? null;
 const mb = latest ? (latest.sizeBytes / 1048576).toFixed(1) : null;
-const date = latest ? new Date(latest.publishedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : null;
+const date = latest
+  ? new Date(latest.publishedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
+  : null;
+const minOS = latest ? String(latest.minimumSystemVersion).replace(/\.0$/, '') : '14';
+const repo = 'https://github.com/marvinmarnold/mtats';
+const releaseURL = latest ? `${repo}/releases/tag/v${latest.version}` : `${repo}/releases`;
+const year = new Date().getUTCFullYear();
+
+// Screenshots are 2x PNGs; read the IHDR so width/height attributes always match the file.
+// Screenshots not yet captured (spec §3.7) are skipped, and the section is omitted when none exist.
+// Resolved against the project root (astro build/dev run from site/); import.meta.url points into the bundle.
+const publicFile = (path: string) => resolve(process.cwd(), `public${path}`);
+function png(path: string) {
+  const b = readFileSync(publicFile(path));
+  return { src: path, w: Math.round(b.readUInt32BE(16) / 2), h: Math.round(b.readUInt32BE(20) / 2) };
+}
+const shots = [
+  { src: '/screens/cpu.png', caption: 'CPU', alt: 'CPU dropdown: total usage and one bar per core' },
+  { src: '/screens/memory.png', caption: 'Memory', alt: 'Memory dropdown: used percentage and wired, active, inactive, compressed and free bytes' },
+  { src: '/screens/gpu.png', caption: 'GPU', alt: 'GPU dropdown: utilization percentage' },
+  { src: '/screens/network.png', caption: 'Network', alt: 'Network dropdown: download and upload rates, local and public IP, per-interface rates' },
+  { src: '/screens/settings.png', caption: 'Settings', alt: 'Settings window: widget toggles, refresh interval, launch at login, public IP lookup, update controls' },
+];
+const screens = shots.filter((s) => existsSync(publicFile(s.src))).map((s) => ({ ...s, ...png(s.src) }));
+const description = 'A free, open-source menu-bar monitor for CPU, memory, GPU and network on Apple Silicon Macs.';
 ---
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#FFFFFF" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0C0F13" />
     <title>mtats — Mac stats you wear on your sleeve</title>
-    <meta name="description" content="A menu-bar monitor for CPU, memory, GPU and network on Apple Silicon Macs." />
+    <meta name="description" content={description} />
+    <link rel="canonical" href="https://mtats.app/" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://mtats.app/" />
+    <meta property="og:title" content="mtats — Mac stats you wear on your sleeve" />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="https://mtats.app/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
-    <header>
+    <header class="hero">
+      <p class="eyebrow">Free · Open source · Apple Silicon</p>
       <h1>mtats</h1>
-      <p>Mac stats you wear on your sleeve.</p>
-      <p>A menu-bar monitor for CPU, memory, GPU and network. Apple Silicon, macOS 14 or later.</p>
+      <p class="tagline">Mac stats you wear on your sleeve.</p>
+      <p class="lede">CPU, memory, GPU and network, right in the menu bar. For Apple Silicon Macs running macOS 14 or later.</p>
     </header>
-    <section aria-label="Menu bar preview" id="menubar"></section>
-    <section id="download">
-      {latest ? (
-        <>
-          <a href="/download">Download mtats {latest.version}</a>
-          <p>{mb} MB · macOS {latest.minimumSystemVersion} or later · {date}</p>
-          <p><a href={`https://github.com/marvinmarnold/mtats/releases/tag/v${latest.version}`}>Also on GitHub Releases</a></p>
-        </>
-      ) : (
-        <p>The first release is on its way.</p>
-      )}
-    </section>
-    <section id="install">
-      <h2>Install</h2>
-      <ol>
-        <li>Open the downloaded DMG.</li>
-        <li>Drag mtats to Applications.</li>
-        <li>Open mtats from Applications. It's notarized by Apple, so macOS opens it after the usual first-launch prompt.</li>
-      </ol>
-      <p>mtats lives in the menu bar and has no Dock icon. Updates arrive through the app itself.</p>
-    </section>
-    <section id="screenshots"></section>
-    <section id="privacy">
-      <h2>Privacy</h2>
-      <p>No telemetry, no crash reporting, no accounts. mtats makes two kinds of outbound request: a daily update check (you can turn it off in Settings) and an optional public-IP lookup (on by default, toggle in Settings). Plugins run with the app's privileges, and mtats asks before loading a third-party plugin for the first time.</p>
-    </section>
+    <main>
+      <section class="wide" aria-label="Menu bar preview" id="menubar">
+        <MenuBar />
+      </section>
+      <section id="download" aria-labelledby="download-h">
+        <h2 id="download-h" class="visually-hidden">Download</h2>
+        {latest ? (
+          <>
+            <a class="button" href="/download"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M2.5 13.5h11"/></svg>Download mtats {latest.version}</a>
+            <p class="meta">{mb} MB · macOS {minOS} or later · {date}</p>
+            <p class="trust">Signed with a Developer ID and notarized by Apple, so macOS opens it without any Gatekeeper workaround. <a href={releaseURL}>Also on GitHub Releases</a></p>
+            <details class="verify">
+              <summary>Verify the download</summary>
+              <p>Run this in Terminal and compare the output with the checksum below.</p>
+              <pre><code>shasum -a 256 ~/Downloads/mtats-{latest.version}.dmg</code></pre>
+              <code class="sha">{latest.sha256}</code>
+            </details>
+          </>
+        ) : (
+          <>
+            <p class="soon">The first release is on its way.</p>
+            <p class="trust"><a href={repo}>Watch the repository on GitHub</a></p>
+          </>
+        )}
+      </section>
+      <section id="install" aria-labelledby="install-h">
+        <h2 id="install-h">Install in three steps</h2>
+        <ol class="steps">
+          <li>Open the downloaded DMG.</li>
+          <li>Drag mtats to Applications.</li>
+          <li>Open mtats from Applications. macOS asks once whether to open an app downloaded from the internet; click Open. Nothing to override in System Settings.</li>
+        </ol>
+        <p>mtats lives in the menu bar and has no Dock icon. Updates arrive through the app itself: Settings → Check for Updates…, or automatically once a day.</p>
+      </section>
+      {screens.length > 0 && <section id="screenshots" class="wide" aria-labelledby="screens-h">
+        <h2 id="screens-h">What you get</h2>
+        <div class="screens">
+          {screens.map((s) => (
+            <figure>
+              <img src={s.src} width={s.w} height={s.h} alt={s.alt} loading="lazy" decoding="async" />
+              <figcaption>{s.caption}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </section>}
+      <section id="privacy" aria-labelledby="privacy-h">
+        <h2 id="privacy-h">Privacy</h2>
+        <p>No telemetry, no crash reporting, no accounts. mtats makes exactly two kinds of outbound request: a daily update check against mtats.app (turn it off in Settings) and an optional public-IP lookup against api.ipify.org or icanhazip.com (on by default; turn it off in Settings). Nothing else leaves your Mac.</p>
+      </section>
+      <section id="open" aria-labelledby="open-h">
+        <h2 id="open-h">Open source, pluggable</h2>
+        <p>mtats is MIT-licensed. Every widget, including the four built in, is a plugin loaded through the same mechanism, so you can write your own. Plugins run with the app's privileges; mtats asks before loading a third-party plugin for the first time. <a href={repo}>Read the source on GitHub</a></p>
+      </section>
+    </main>
     <footer>
-      <a href="https://github.com/marvinmarnold/mtats">Source on GitHub (MIT)</a> ·
-      <a href="https://github.com/marvinmarnold/mtats/releases">Releases</a>
-      {latest && <> · Current version {latest.version}</>}
+      <a href={repo}>Source on GitHub (MIT)</a>
+      <span aria-hidden="true">·</span>
+      <a href={`${repo}/releases`}>Releases</a>
+      {latest && <><span aria-hidden="true">·</span><span>Current version {latest.version}</span></>}
+      <span aria-hidden="true">·</span>
+      <span>© {year} The mtats contributors</span>
     </footer>
   </body>
 </html>
