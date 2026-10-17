@@ -17,4 +17,6 @@ grep -q "__" "$T/r.plist" && fail "unreplaced token in release plist"
 MTATS_VERSION=1.2.3 MTATS_BUILD=42 Scripts/render-info-plist.sh "$T/d.plist" debug
 $PB -c 'Print :SUFeedURL' "$T/d.plist" >/dev/null 2>&1 && fail "debug plist must not contain SUFeedURL"
 Scripts/render-info-plist.sh "$T/x.plist" bogus 2>/dev/null && fail "bad configuration should fail"
+KEY=$($PB -c 'Print :SUPublicEDKey' "$T/r.plist") || fail "SUPublicEDKey missing"
+[[ $(printf %s "$KEY" | base64 -d 2>/dev/null | wc -c) -eq 32 ]] || fail "SUPublicEDKey is not a 32-byte Ed25519 key"
 exit 0
