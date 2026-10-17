@@ -27,13 +27,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks" "$APP/Contents/Resourc
 # so relink the Host's objects ourselves against the dynamic MTatsPluginKit. Only this
 # configuration's objects: a debug and a release build can coexist on one checkout, and
 # matching both would duplicate every symbol or ship debug code in a release.
-OBJ_DIRS=$(find .build/out/Intermediates.noindex -type d -path "*/${CONFIG_DIR}/mtats-p.build/Objects-normal/arm64" 2>/dev/null || true)
-if [[ -z "$OBJ_DIRS" || $(wc -l <<<"$OBJ_DIRS") -ne 1 ]]; then
-  echo "package-app.sh: expected exactly one ${CONFIG_DIR} object directory for the mtats target, found:" >&2
-  echo "${OBJ_DIRS:-<none>}" >&2
-  echo "See ADR-0005's Task 10 addendum and the spec's spike (b) outcome." >&2
-  exit 1
-fi
+OBJ_DIRS=$(Scripts/find-host-objects.sh .build/out/Intermediates.noindex "$CONFIG_DIR") || {
+  echo "See ADR-0005's Task 10 addendum and the spec's spike (b) outcome." >&2; exit 1; }
 MTATS_OBJECTS=$(find "$OBJ_DIRS" -maxdepth 1 -name '*.o' ! -name '*-testable.o')
 swiftc -o "$APP/Contents/MacOS/mtats" \
   $MTATS_OBJECTS \
