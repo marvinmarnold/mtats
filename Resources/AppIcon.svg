@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- SPDX-License-Identifier: MIT -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2C3645"/>
+      <stop offset="1" stop-color="#151B24"/>
+    </linearGradient>
+    <clipPath id="squircle"><rect x="100" y="100" width="824" height="824" rx="186" ry="186"/></clipPath>
+  </defs>
+  <g clip-path="url(#squircle)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#bg)"/>
+    <ellipse cx="512" cy="160" rx="520" ry="240" fill="#FFFFFF" fill-opacity="0.06"/>
+    <rect x="192" y="388" width="640" height="280" rx="64" ry="64" fill="#000000" fill-opacity="0.28"/>
+    <rect x="192" y="372" width="640" height="280" rx="64" ry="64" fill="#F2F4F7"/>
+    <polyline points="300,552 392,484 484,524 576,440 668,490 736,432" fill="none" stroke="#15803D" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

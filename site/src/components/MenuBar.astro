@@ -1,0 +1,64 @@
+---
+// SPDX-License-Identifier: MIT
+// Menu-bar mock-up at 1 unit = 1 pt, shown at 2x. Glyph geometry mirrors the app's own views.
+---
+<svg class="menubar" viewBox="0 0 460 64" width="920" height="128" role="img"
+     aria-label="The macOS menu bar showing mtats: CPU 12%, memory 61%, GPU 8%, network down 1.2 MB/s and up 84 KB/s"
+     font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif"
+     style="font-variant-numeric: tabular-nums">
+  <defs>
+    <linearGradient id="desk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3B4C6B"/><stop offset="1" stop-color="#1F2A3F"/>
+    </linearGradient>
+    <clipPath id="screen"><rect x="0" y="0" width="460" height="64" rx="10"/></clipPath>
+  </defs>
+  <g clip-path="url(#screen)">
+    <rect x="0" y="0" width="460" height="64" fill="url(#desk)"/>
+    <rect x="0" y="0" width="460" height="24" fill="#1D1D1F"/>
+    <!-- left: app menus -->
+    <g fill="#F2F2F7" font-size="11" font-weight="500">
+      <text x="12" y="16" font-weight="700">Finder</text>
+      <text x="62" y="16">File</text>
+      <text x="94" y="16">Edit</text>
+      <text x="124" y="16">View</text>
+    </g>
+    <!-- CPU -->
+    <g transform="translate(196 5.5)" fill="none" stroke="#F2F2F7" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
+      <g transform="scale(0.8125)">
+        <rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/>
+        <rect x="6" y="6" width="4" height="4" rx="0.5" stroke-width="1"/>
+        <path d="M5.5 1.5v2M8 1.5v2M10.5 1.5v2M5.5 12.5v2M8 12.5v2M10.5 12.5v2M1.5 5.5h2M1.5 8h2M1.5 10.5h2M12.5 5.5h2M12.5 8h2M12.5 10.5h2"/>
+      </g>
+    </g>
+    <text x="213" y="16" fill="#F2F2F7" font-size="11" font-weight="500">12%</text>
+    <!-- Memory -->
+    <g transform="translate(247 5.5)" fill="none" stroke="#F2F2F7" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
+      <g transform="scale(0.8125)">
+        <rect x="1.5" y="4" width="13" height="7" rx="1.5"/>
+        <path d="M4.5 6.5v2M8 6.5v2M11.5 6.5v2" stroke-width="1.6"/>
+        <path d="M3.5 11v2.5M6 11v2.5M8.5 11v2.5M11 11v2.5M13 11v2.5" stroke-width="1"/>
+      </g>
+    </g>
+    <text x="264" y="16" fill="#F2F2F7" font-size="11" font-weight="500">61%</text>
+    <!-- GPU: GPUGlyph with u = 13/16 -->
+    <g transform="translate(298 5.5) scale(0.8125)" fill="none" stroke="#F2F2F7" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="1" y="3.5" width="14" height="8" rx="1.5"/>
+      <circle cx="8.5" cy="7.5" r="2.3"/>
+      <circle cx="8.5" cy="7.5" r="0.8" fill="#F2F2F7" stroke="none"/>
+      <path d="M3 11.5v2.5"/>
+      <path d="M5 13.5h8" stroke-width="1.1" stroke-dasharray="1.2 1.4"/>
+    </g>
+    <text x="315" y="16" fill="#F2F2F7" font-size="11" font-weight="500">8%</text>
+    <!-- Network: two 9pt rows -->
+    <g fill="none" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M347 3.5v6M344.5 7l2.5 2.5L349.5 7" stroke="#0A84FF"/>
+      <path d="M347 20.5v-6M344.5 17l2.5-2.5L349.5 17" stroke="#FF9F0A"/>
+    </g>
+    <g fill="#F2F2F7" font-size="9" font-weight="500">
+      <text x="353" y="10.5">1.2 MB/s</text>
+      <text x="353" y="20.5">84 KB/s</text>
+    </g>
+    <!-- clock -->
+    <text x="452" y="16" fill="#F2F2F7" font-size="11" font-weight="500" text-anchor="end">Fri 9:41</text>
+  </g>
+</svg>
