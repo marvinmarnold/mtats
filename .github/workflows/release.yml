@@ -41,13 +41,15 @@ jobs:
           KC="$RUNNER_TEMP/signing.keychain-db"; KC_PW=$(uuidgen)
           echo "$P12_BASE64" | base64 -d > "$RUNNER_TEMP/devid.p12"
           security create-keychain -p "$KC_PW" "$KC"
-          security set-keychain-settings -lut 3600 "$KC"
+          # 6 h (the job maximum): app notarization alone may wait 30 min before the DMG is signed.
+          security set-keychain-settings -lut 21600 "$KC"
           security unlock-keychain -p "$KC_PW" "$KC"
           security import "$RUNNER_TEMP/devid.p12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PW" "$KC" >/dev/null
           # shellcheck disable=SC2046  # intentional word splitting: one argument per existing keychain
           security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
           rm -f "$RUNNER_TEMP/devid.p12"
+          echo "::add-mask::$KC_PW"; echo "MTATS_KC_PW=$KC_PW" >> "$GITHUB_ENV"
           IDS=$(security find-identity -v -p codesigning "$KC" | grep "Developer ID Application:.*(${{ vars.APPLE_TEAM_ID }})")
           [[ $(wc -l <<<"$IDS") -eq 1 ]] || { echo "::error::expected exactly one Developer ID identity"; exit 1; }
           echo "MTATS_IDENTITY=$(sed -E 's/^.*"(.*)"$/\1/' <<<"$IDS")" >> "$GITHUB_ENV"
@@ -74,6 +76,7 @@ jobs:
           mkdir -p out
           DMG="out/mtats-${MTATS_VERSION}.dmg"
           Scripts/make-dmg.sh .build/mtats.app "$DMG"
+          security unlock-keychain -p "$MTATS_KC_PW" "$RUNNER_TEMP/signing.keychain-db"
           codesign --force --timestamp --sign "$MTATS_IDENTITY" "$DMG"
           Scripts/notarize.sh "$DMG"
           spctl -a -vv -t open --context context:primary-signature "$DMG"
@@ -85,7 +88,10 @@ jobs:
           Scripts/fetch-sparkle-tools.sh
           PREFIX=""; [[ "$MTATS_CHANNEL" == beta ]] && PREFIX="beta/"
           W="$RUNNER_TEMP/appcast"; mkdir -p "$W"
-          curl -fsS -o "$W/appcast.xml" "https://storage.googleapis.com/mtats-releases/${PREFIX}appcast.xml" || rm -f "$W/appcast.xml"
+          # Only a 404 (first release on the channel) may start an empty feed; any other error fails
+          # here instead of publishing an appcast that has lost every earlier item.
+          rc=0; Scripts/fetch-published.sh "https://storage.googleapis.com/mtats-releases/${PREFIX}appcast.xml" "$W/appcast.xml" || rc=$?
+          [[ $rc == 0 || $rc == 3 ]] || { echo "::error::could not fetch the published ${PREFIX}appcast.xml"; exit 1; }
           cp "out/mtats-${MTATS_VERSION}.dmg" "$W/"
           /usr/bin/python3 Scripts/notes-to-html.py "Releases/${MTATS_VERSION}.md" "$W/mtats-${MTATS_VERSION}.html"
           printf '%s' "$ED_KEY" > "$RUNNER_TEMP/ed.key"
@@ -121,6 +127,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Channel and version
         run: |
           VERSION="${GITHUB_REF_NAME#v}"; CHANNEL=stable; [[ "$VERSION" == *-rc.* ]] && CHANNEL=beta
@@ -129,6 +137,18 @@ jobs:
         with:
           name: release
           path: out
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      # Built before any GCP credential exists, so npm install scripts and the build never see one.
+      # The released channel's data comes from the artifact; the other channel from the public bucket.
+      - name: Build site with published data
+        run: |
+          BOOT=$(Scripts/site-data.sh site out "$MTATS_CHANNEL")
+          if [[ "$BOOT" == bootstrap ]]; then export MTATS_SITE_BOOTSTRAP=1; fi
+          cd site && npm ci && npm run build
       - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -136,21 +156,6 @@ jobs:
       - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
       - name: Upload to bucket
         run: Scripts/publish.sh out "$MTATS_CHANNEL" "$MTATS_VERSION"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: site/package-lock.json
-      - name: Build site with published data
-        working-directory: site
-        run: |
-          B=https://storage.googleapis.com/mtats-releases
-          # Stable latest.json drives the page and /download; an rc never changes them.
-          if curl -fsS -o src/data/latest.json "$B/latest.json"; then :; else rm -f src/data/latest.json; export MTATS_SITE_BOOTSTRAP=1; echo "MTATS_SITE_BOOTSTRAP=1" >> "$GITHUB_ENV"; fi
-          curl -fsS -o public/appcast.xml "$B/appcast.xml" || true
-          mkdir -p public/beta && { curl -fsS -o public/beta/appcast.xml "$B/beta/appcast.xml" || true; }
-          curl -fsS -o public/latest.json "$B/latest.json" || true
-          npm ci && npm run build
       - name: Deploy Hosting
         working-directory: site
         run: npx firebase deploy --only hosting --project mtats-release --non-interactive
@@ -158,6 +163,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          PRE=(); [[ "$MTATS_CHANNEL" == beta ]] && PRE=(--prerelease)
-          gh release create "$GITHUB_REF_NAME" "out/mtats-${MTATS_VERSION}.dmg" "out/mtats-${MTATS_VERSION}.dmg.sha256" \
-            --title "mtats $MTATS_VERSION" --notes-file "out/${MTATS_VERSION}.md" "${PRE[@]}"
+          FILES=("out/mtats-${MTATS_VERSION}.dmg" "out/mtats-${MTATS_VERSION}.dmg.sha256")
+          # Re-runnable: a release left by an earlier attempt gets its assets (re)uploaded instead.
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${FILES[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            PRE=(); [[ "$MTATS_CHANNEL" == beta ]] && PRE=(--prerelease)
+            gh release create "$GITHUB_REF_NAME" "${FILES[@]}" --repo "$GITHUB_REPOSITORY" \
+              --title "mtats $MTATS_VERSION" --notes-file "out/${MTATS_VERSION}.md" "${PRE[@]}"
+          fi
