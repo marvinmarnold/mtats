@@ -28,7 +28,7 @@ jobs:
           CHANNEL=stable; [[ "$VERSION" == *-rc.* ]] && CHANNEL=beta
           { echo "MTATS_VERSION=$VERSION"; echo "MTATS_BUILD=$(git rev-list --count HEAD)"; echo "MTATS_CHANNEL=$CHANNEL"; } >> "$GITHUB_ENV"
       - name: Gate — tests
-        run: swift test --build-system swiftbuild && Scripts/tests/run.sh
+        run: Scripts/swift-test.sh && Scripts/tests/run.sh
       - name: Gate — release package and smoke test
         run: Scripts/package-app.sh -c release && ${{ vars.MTATS_CI_SMOKE_TEST }}
       - name: Update guard

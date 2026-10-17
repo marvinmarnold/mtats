@@ -18,7 +18,7 @@ if [[ "${PREFLIGHT_SKIP_BUILD:-0}" != 1 ]]; then
   git fetch -q origin main
   [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || fail "main is not up to date with origin/main"
   [[ -z "$(git status --porcelain)" ]] || fail "working tree is not clean"
-  swift test --build-system swiftbuild >/dev/null || fail "swift test failed"
+  Scripts/swift-test.sh >/dev/null || fail "swift test failed"
   Scripts/tests/run.sh >/dev/null || fail "shell tests failed"
   Scripts/package-app.sh -c release >/dev/null && Scripts/smoke-test.sh || fail "release package or smoke test failed"
 fi
