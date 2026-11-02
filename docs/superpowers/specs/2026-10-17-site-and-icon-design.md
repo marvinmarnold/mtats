@@ -456,6 +456,8 @@ Borders (`--border`) are decorative; every bordered element also has a fill that
 
 ## 5. App icon: vector construction
 
+> **Superseded by Pulse M on 2026-11-01 (§5 and D4 only).** The app icon is now the owner-approved "Pulse M": bone (`#F3EBD9`) squircle, polyline (60,612) (262,612) (334,352) (512,556) (690,352) (762,612) (964,612) with round caps and joins, stroked `#15151A` width 176 then `#D7322D` width 100, clipped to the squircle. `Resources/AppIcon.svg` and `Scripts/render-icon.swift` are authoritative; the pixel checks in §9.2 are superseded by `Scripts/tests/test-icon.sh`. The text below records the original design.
+
 Canvas 1024×1024, `viewBox="0 0 1024 1024"`, y down. The macOS icon grid: the rounded square occupies 824×824 at (100,100) (Apple's standard 100 px safe margin); corner radius 186 approximates the system squircle. Everything outside the rounded square is transparent.
 
 | Constant | Value |
