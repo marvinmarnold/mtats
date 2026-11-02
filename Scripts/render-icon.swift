@@ -23,14 +23,13 @@ func drawIcon(_ c: CGContext, size: CGFloat, origin: CGPoint) {
     c.scaleBy(x: size / K, y: size / K)
     c.translateBy(x: 0, y: K); c.scaleBy(x: 1, y: -1)        // SVG coordinates from here on
     c.addPath(rrect(100, 100, 824, 824, 186)); c.clip()
-    let grad = CGGradient(colorsSpace: space, colors: [rgb(0x2C3645), rgb(0x151B24)] as CFArray, locations: [0, 1])!
-    c.drawLinearGradient(grad, start: CGPoint(x: 512, y: 100), end: CGPoint(x: 512, y: 924), options: [])
-    c.setFillColor(rgb(0xFFFFFF, 0.06)); c.fillEllipse(in: CGRect(x: -8, y: -80, width: 1040, height: 480))
-    c.setFillColor(rgb(0x000000, 0.28)); c.addPath(rrect(192, 388, 640, 280, 64)); c.fillPath()
-    c.setFillColor(rgb(0xF2F4F7));       c.addPath(rrect(192, 372, 640, 280, 64)); c.fillPath()
-    let pts = [(300, 552), (392, 484), (484, 524), (576, 440), (668, 490), (736, 432)].map { CGPoint(x: $0.0, y: $0.1) }
-    c.setStrokeColor(rgb(0x15803D)); c.setLineWidth(56); c.setLineCap(.round); c.setLineJoin(.round)
-    c.addLines(between: pts); c.strokePath()
+    c.setFillColor(rgb(0xF3EBD9)); c.fill(CGRect(x: 100, y: 100, width: 824, height: 824))
+    // Pulse M: an ECG trace whose peaks spell an M, running off both edges of the squircle (clipped).
+    let pts = [(60, 612), (262, 612), (334, 352), (512, 556), (690, 352), (762, 612), (964, 612)].map { CGPoint(x: $0.0, y: $0.1) }
+    c.setLineCap(.round); c.setLineJoin(.round)
+    for (colour, width) in [(rgb(0x15151A), CGFloat(176)), (rgb(0xD7322D), CGFloat(100))] {
+        c.setStrokeColor(colour); c.setLineWidth(width); c.addLines(between: pts); c.strokePath()
+    }
     c.restoreGState()
 }
 
