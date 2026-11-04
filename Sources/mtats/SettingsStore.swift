@@ -49,4 +49,14 @@ public final class SettingsStore: ObservableObject {
             defaults.set(newValue, forKey: "publicIPLookupEnabled")
         }
     }
+
+    /// Always show one combined menu bar item instead of one per widget. Independent of this,
+    /// the controller collapses automatically when macOS hides items (notch / full menu bar).
+    public var combineMenuBarItems: Bool {
+        get { defaults.object(forKey: "combineMenuBarItems") as? Bool ?? false }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: "combineMenuBarItems")
+        }
+    }
 }

@@ -54,3 +54,13 @@ final class SettingsStoreTests: XCTestCase {
         cancellable.cancel()
     }
 }
+
+final class CombineMenuBarSettingTests: XCTestCase {
+    func test_combineMenuBarItems_defaultsOff_andPersists() {
+        let defaults = UserDefaults(suiteName: "mtats.tests.\(UUID())")!
+        let store = SettingsStore(defaults: defaults)
+        XCTAssertFalse(store.combineMenuBarItems)
+        store.combineMenuBarItems = true
+        XCTAssertTrue(SettingsStore(defaults: defaults).combineMenuBarItems)
+    }
+}
