@@ -31,6 +31,7 @@ let defaults: UserDefaults = {
     return UserDefaults(suiteName: smokeTestDefaultsDomain)!
 }()
 
+StatusItemMigration.run(defaults: defaults)
 let settings = SettingsStore(defaults: defaults)
 let loader = PluginLoader(defaults: defaults)
 let builtInDirectory = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Plugins")

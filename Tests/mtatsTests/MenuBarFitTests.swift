@@ -41,10 +41,12 @@ final class MenuBarFitTests: XCTestCase {
     }
 
     // A single odd reading (screen waking, space switch) must not permanently collapse the bar.
-    func test_debounce_needsTwoConsecutiveHiddenReadings() {
+    func test_debounce_resetsOnAVisibleReading() {
         var debounce = HiddenDebounce()
         XCTAssertFalse(debounce.record(hidden: true))
+        XCTAssertFalse(debounce.record(hidden: true))
         XCTAssertFalse(debounce.record(hidden: false))
+        XCTAssertFalse(debounce.record(hidden: true))
         XCTAssertFalse(debounce.record(hidden: true))
         XCTAssertTrue(debounce.record(hidden: true))
     }
