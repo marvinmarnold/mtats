@@ -35,7 +35,7 @@ public enum MenuBarFit {
 
 /// One odd reading (display waking, a Space switch) must not permanently collapse the bar.
 public struct HiddenDebounce {
-    public static let threshold = 2
+    public static let threshold = 3
     private var streak = 0
     public init() {}
 

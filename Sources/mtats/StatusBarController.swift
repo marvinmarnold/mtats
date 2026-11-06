@@ -29,6 +29,8 @@ public final class StatusBarController: NSObject {
     private var hiddenDebounce = HiddenDebounce()
     private var visibilityTimer: Timer?
     private var screensAsleep = false
+    private var displaySettle = DisplaySettle()
+    private var revertWork: DispatchWorkItem?
     /// Interval each widget was last started at; absent means stopped.
     private var runningIntervals: [String: TimeInterval] = [:]
     private var settingsItem: NSStatusItem?
@@ -52,6 +54,8 @@ public final class StatusBarController: NSObject {
         let newWidgets = widgets.filter { !alreadyPresentedIDs.contains($0.id) }
         guard !newWidgets.isEmpty else { return }
         self.widgets.append(contentsOf: newWidgets)
+        // Decide the layout before creating anything, so no item is made only to be hidden.
+        if settings.compactMenuBar, !isCombined { setCombined(true) }
 
         for widget in newWidgets {
             // Sized from the rendered content, not per-widget constants: the Host has no
@@ -136,6 +140,14 @@ public final class StatusBarController: NSObject {
         SettingsView(settings: settings, widgets: widgets, loader: loader, updateControls: updateControls, onToggle: { [weak self] in self?.applyEnabledState() })
     }
 
+    /// Every status item this controller has created, for tests asserting items are reused.
+    var statusItemIdentities: Set<ObjectIdentifier> {
+        var all = Set(slots.values.compactMap { $0.item }.map { ObjectIdentifier($0) })
+        if let combinedItem { all.insert(ObjectIdentifier(combinedItem)) }
+        if let settingsItem { all.insert(ObjectIdentifier(settingsItem)) }
+        return all
+    }
+
     // MARK: - Layout (separate items vs one combined item)
 
     private func enabledSlots() -> [Slot] {
@@ -153,6 +165,7 @@ public final class StatusBarController: NSObject {
         isCombined = combined
         if combined, combinedItem == nil {
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            item.autosaveName = StatusItemNames.compact
             item.button?.target = self
             item.button?.action = #selector(combinedClicked(_:))
             combinedItem = item
@@ -169,25 +182,27 @@ public final class StatusBarController: NSObject {
         relayout()
     }
 
-    /// Puts a slot's view in the right status item for the current mode.
+    /// Puts a slot's view in the right status item for the current mode. Items are created once and
+    /// only shown or hidden afterwards: removing and recreating status items is what loses their
+    /// saved position and can leave macOS holding stale state for the app.
     private func attach(_ slot: Slot) {
         slot.hosting.removeFromSuperview()
         if isCombined {
-            slot.item.map { NSStatusBar.system.removeStatusItem($0) }
-            slot.item = nil
             combinedItem?.button?.addSubview(slot.hosting)
         } else {
-            if slot.item == nil {
-                let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-                item.button?.target = PopoverShower.shared
-                item.button?.action = #selector(PopoverShower.toggle(_:))
-                slot.item = item
-            }
-            if let button = slot.item?.button {
-                button.addSubview(slot.hosting)
-                PopoverShower.shared.register(button: button, popover: slot.popover, anchor: slot.hosting)
-            }
+            let item = slot.item ?? makeWidgetItem(for: slot)
+            item.button?.addSubview(slot.hosting)
         }
+    }
+
+    private func makeWidgetItem(for slot: Slot) -> NSStatusItem {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.autosaveName = StatusItemNames.widget(slot.widget.id)
+        item.button?.target = PopoverShower.shared
+        item.button?.action = #selector(PopoverShower.toggle(_:))
+        if let button = item.button { PopoverShower.shared.register(button: button, popover: slot.popover, anchor: slot.hosting) }
+        slot.item = item
+        return item
     }
 
     private func relayout() {
@@ -196,6 +211,7 @@ public final class StatusBarController: NSObject {
         let height = NSStatusBar.system.thickness
         if isCombined {
             settingsItem?.isVisible = false
+            for slot in slots.values { slot.item?.isVisible = false }
             combinedItem?.isVisible = true
             var widths = enabled.map(\.contentWidth)
             let gearWidth = gearHosting.map { $0.fittingSize.width.rounded(.up) } ?? 0
@@ -243,17 +259,30 @@ public final class StatusBarController: NSObject {
         visibilityTimer = timer
         let center = NotificationCenter.default
         center.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            // New display layout (docked, lid, resolution): start over with separate items and re-measure.
-            guard let self else { return }
-            self.hiddenDebounce.reset()
-            if self.autoCombined { self.autoCombined = false; self.refreshLayout() }
+            self?.displaysChanged()
         }
         let workspace = NSWorkspace.shared.notificationCenter
         workspace.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in self?.screensAsleep = true }
         workspace.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in
             self?.screensAsleep = false
-            self?.hiddenDebounce.reset()
+            self?.displaysChanged()
         }
+    }
+
+    /// A monitor was plugged in/removed or a display woke. macOS reshuffles item windows for a few
+    /// seconds, so wait for quiet, then start over with the normal layout and judge it again.
+    private func displaysChanged() {
+        displaySettle.noteChange()
+        hiddenDebounce.reset()
+        revertWork?.cancel()
+        guard autoCombined else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.displaySettle.isSettled() else { return }
+            self.autoCombined = false
+            self.refreshLayout()
+        }
+        revertWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + displaySettle.quietPeriod + 0.5, execute: work)
     }
 
     private func visibleItemIsHidden(_ item: NSStatusItem?) -> Bool? {
@@ -266,7 +295,7 @@ public final class StatusBarController: NSObject {
     }
 
     private func checkVisibility() {
-        guard !screensAsleep, !autoCombined, !settings.compactMenuBar else { return }
+        guard !screensAsleep, displaySettle.isSettled(), !autoCombined, !settings.compactMenuBar else { return }
         let candidates = slotOrder.compactMap { slots[$0]?.item } + [settingsItem]
         let verdicts = candidates.compactMap(visibleItemIsHidden)
         guard !verdicts.isEmpty else { return }
@@ -281,6 +310,7 @@ public final class StatusBarController: NSObject {
     /// "app menu" to hang a Settings item off of otherwise.
     private func presentSettingsMenuItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.autosaveName = StatusItemNames.settings
         item.button?.title = "⚙"
         item.button?.target = self
         item.button?.action = #selector(openSettings)
