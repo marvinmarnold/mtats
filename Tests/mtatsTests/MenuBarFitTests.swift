@@ -51,9 +51,9 @@ final class MenuBarFitTests: XCTestCase {
 
     func test_layout_placesSlotsLeftToRightWithGapsAndPadding() {
         let layout = MenuBarFit.layout(widths: [40, 50, 30])
-        let expectedOffsets: [CGFloat] = [4, 50, 106]
+        let expectedOffsets: [CGFloat] = [2, 45, 98]
         XCTAssertEqual(layout.offsets, expectedOffsets)
-        XCTAssertEqual(layout.total, CGFloat(140))
+        XCTAssertEqual(layout.total, CGFloat(130))
     }
 
     func test_layout_ofNothing_isEmpty() {

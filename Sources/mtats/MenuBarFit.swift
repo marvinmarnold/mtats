@@ -6,8 +6,8 @@ import CoreGraphics
 /// silently hides any status item that doesn't fit to the right of the notch, and an app can't
 /// claim more room; the only remedy is to take less (see StatusBarController's combined mode).
 public enum MenuBarFit {
-    public static let edgePadding: CGFloat = 4
-    public static let slotGap: CGFloat = 6
+    public static let edgePadding: CGFloat = 2
+    public static let slotGap: CGFloat = 3
 
     /// Where status items can actually appear: right of the notch when there is one.
     public static func usableArea(screenFrame: CGRect, rightOfNotch: CGRect?) -> CGRect {

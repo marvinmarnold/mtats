@@ -50,13 +50,14 @@ public final class SettingsStore: ObservableObject {
         }
     }
 
-    /// Always show one combined menu bar item instead of one per widget. Independent of this,
-    /// the controller collapses automatically when macOS hides items (notch / full menu bar).
-    public var combineMenuBarItems: Bool {
-        get { defaults.object(forKey: "combineMenuBarItems") as? Bool ?? false }
+    /// Compact layout: every indicator in one tightly spaced menu bar item. Normal (the default)
+    /// is one item per widget. Independent of this, the controller switches to compact on its own
+    /// when macOS hides items (notch / full menu bar). Falls back to the key rc.1/rc.2 used.
+    public var compactMenuBar: Bool {
+        get { (defaults.object(forKey: "compactMenuBar") ?? defaults.object(forKey: "combineMenuBarItems")) as? Bool ?? false }
         set {
             objectWillChange.send()
-            defaults.set(newValue, forKey: "combineMenuBarItems")
+            defaults.set(newValue, forKey: "compactMenuBar")
         }
     }
 }

@@ -144,7 +144,7 @@ public final class StatusBarController: NSObject {
 
     /// Decides the mode, then lays everything out. Cheap; called on any change.
     private func refreshLayout() {
-        let want = settings.combineMenuBarItems || autoCombined
+        let want = settings.compactMenuBar || autoCombined
         if want != isCombined { setCombined(want) } else { relayout() }
     }
 
@@ -266,7 +266,7 @@ public final class StatusBarController: NSObject {
     }
 
     private func checkVisibility() {
-        guard !screensAsleep, !autoCombined, !settings.combineMenuBarItems else { return }
+        guard !screensAsleep, !autoCombined, !settings.compactMenuBar else { return }
         let candidates = slotOrder.compactMap { slots[$0]?.item } + [settingsItem]
         let verdicts = candidates.compactMap(visibleItemIsHidden)
         guard !verdicts.isEmpty else { return }

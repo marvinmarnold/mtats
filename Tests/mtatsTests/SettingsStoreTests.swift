@@ -55,12 +55,19 @@ final class SettingsStoreTests: XCTestCase {
     }
 }
 
-final class CombineMenuBarSettingTests: XCTestCase {
-    func test_combineMenuBarItems_defaultsOff_andPersists() {
+final class CompactMenuBarSettingTests: XCTestCase {
+    func test_compactMenuBar_defaultsOff_andPersists() {
         let defaults = UserDefaults(suiteName: "mtats.tests.\(UUID())")!
         let store = SettingsStore(defaults: defaults)
-        XCTAssertFalse(store.combineMenuBarItems)
-        store.combineMenuBarItems = true
-        XCTAssertTrue(SettingsStore(defaults: defaults).combineMenuBarItems)
+        XCTAssertFalse(store.compactMenuBar)
+        store.compactMenuBar = true
+        XCTAssertTrue(SettingsStore(defaults: defaults).compactMenuBar)
+    }
+
+    // Beta testers who turned on rc.1/rc.2's "Combine" toggle keep their choice.
+    func test_compactMenuBar_honoursTheEarlierCombineSetting() {
+        let defaults = UserDefaults(suiteName: "mtats.tests.\(UUID())")!
+        defaults.set(true, forKey: "combineMenuBarItems")
+        XCTAssertTrue(SettingsStore(defaults: defaults).compactMenuBar)
     }
 }

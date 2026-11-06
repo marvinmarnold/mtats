@@ -27,7 +27,7 @@ final class WidgetLifecycleTests: XCTestCase {
     }
 
     func test_itemWidth_growsToFitMeasuredContent() {
-        XCTAssertEqual(WidgetLifecycle.itemWidth(current: 40, measured: 60), 68)
+        XCTAssertEqual(WidgetLifecycle.itemWidth(current: 40, measured: 60), 64)
     }
 
     // Shrinking as digits change ("CPU 100%" → "CPU 5%") would make every item to its left
