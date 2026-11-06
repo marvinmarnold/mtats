@@ -52,7 +52,7 @@ public struct SettingsView: View {
                 get: { settings.compactMenuBar },
                 set: { settings.compactMenuBar = $0; onToggle() }
             ))
-            Text("One tightly spaced item. Turns on automatically if macOS hides indicators behind the notch.")
+            Text("One tightly spaced item. Turns on by itself only if macOS hides indicators behind the notch and no external display is connected.")
                 .font(.caption).foregroundStyle(.secondary)
             if let updateControls {
                 UpdatesSection(controls: updateControls)
