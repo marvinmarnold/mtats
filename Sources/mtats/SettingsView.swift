@@ -48,11 +48,11 @@ public struct SettingsView: View {
                 get: { settings.publicIPLookupEnabled },
                 set: { settings.publicIPLookupEnabled = $0; onToggle() }
             ))
-            Toggle("Combine into one menu bar item", isOn: Binding(
-                get: { settings.combineMenuBarItems },
-                set: { settings.combineMenuBarItems = $0; onToggle() }
+            Toggle("Compact menu bar", isOn: Binding(
+                get: { settings.compactMenuBar },
+                set: { settings.compactMenuBar = $0; onToggle() }
             ))
-            Text("Turns on automatically if macOS hides indicators behind the notch.")
+            Text("One tightly spaced item. Turns on automatically if macOS hides indicators behind the notch.")
                 .font(.caption).foregroundStyle(.secondary)
             if let updateControls {
                 UpdatesSection(controls: updateControls)

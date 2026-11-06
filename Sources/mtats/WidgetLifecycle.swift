@@ -20,7 +20,7 @@ public enum WidgetLifecycle {
         }
     }
 
-    public static let itemPadding: CGFloat = 8
+    public static let itemPadding: CGFloat = 4
 
     /// Grow-only, so a value changing digit count doesn't shift every item to its left.
     public static func itemWidth(current: CGFloat, measured: CGFloat) -> CGFloat {
