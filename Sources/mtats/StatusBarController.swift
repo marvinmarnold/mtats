@@ -69,7 +69,14 @@ public final class StatusBarController: NSObject {
                 }
             }
 
-            let detail = NSHostingController(rootView: widget.detailView())
+            // Every dropdown carries a Settings button: if macOS hides the ⚙ item, any visible indicator
+            // is still a way in.
+            let detail = NSHostingController(rootView: VStack(spacing: 0) {
+                widget.detailView()
+                Divider()
+                HStack { Button("Settings…") { [weak self] in self?.showSettings() }.buttonStyle(.link); Spacer() }
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+            })
             // Let the popover take the detail view's size, so content isn't clipped and the
             // arrow sits over the status item instead of drifting to a fixed default size.
             detail.sizingOptions = [.preferredContentSize]
@@ -279,6 +286,9 @@ public final class StatusBarController: NSObject {
         item.button?.action = #selector(openSettings)
         settingsItem = item
     }
+
+    /// Also reached by launching the app again (Spotlight/Finder) while it is already running.
+    public func showSettings() { openSettings() }
 
     @objc private func openSettings() {
         if settingsWindow == nil {

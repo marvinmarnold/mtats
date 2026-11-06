@@ -76,6 +76,17 @@ let updateControls = updaterController.map { UpdateControls(updater: $0.updater)
 let statusBar = StatusBarController(settings: settings, loader: loader, updateControls: updateControls)
 statusBar.present(widgets: widgets)
 
+/// Opening mtats again (Spotlight, Finder, Dock-less relaunch) opens Settings, so Settings stays
+/// reachable even when macOS hides every status item behind the notch.
+final class ReopenDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        statusBar.showSettings()
+        return true
+    }
+}
+let reopenDelegate = ReopenDelegate()
+app.delegate = reopenDelegate
+
 // spec §4.2: third-party plugins hot-load without a relaunch. Held at top level so it
 // isn't deallocated (which would stop the FSEventStream) — main.swift has no owner above it.
 let watcher = loader.watchForNewPlugins(in: userDirectory, warnBeforeFirstThirdPartyLoad: warnBeforeFirstThirdPartyLoad) { newWidgets in
