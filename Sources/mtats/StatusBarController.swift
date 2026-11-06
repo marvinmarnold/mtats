@@ -294,7 +294,17 @@ public final class StatusBarController: NSObject {
         return MenuBarFit.isHidden(itemFrame: window.frame, hasScreen: window.screen != nil, usable: usable)
     }
 
+    /// True when no external monitor is attached (CGDisplayIsBuiltin per screen).
+    private func autoCollapseAllowed() -> Bool {
+        let flags = NSScreen.screens.compactMap { screen -> Bool? in
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return nil }
+            return CGDisplayIsBuiltin(CGDirectDisplayID(number.uint32Value)) != 0
+        }
+        return MenuBarFit.autoCollapseAllowed(displayIsBuiltIn: flags)
+    }
+
     private func checkVisibility() {
+        guard autoCollapseAllowed() else { return }
         guard !screensAsleep, displaySettle.isSettled(), !autoCombined, !settings.compactMenuBar else { return }
         let candidates = slotOrder.compactMap { slots[$0]?.item } + [settingsItem]
         let verdicts = candidates.compactMap(visibleItemIsHidden)

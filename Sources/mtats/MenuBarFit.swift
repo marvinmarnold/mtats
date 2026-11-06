@@ -20,6 +20,12 @@ public enum MenuBarFit {
         return itemFrame.minX < usable.minX - 0.5 || itemFrame.maxX > usable.maxX + 0.5
     }
 
+    /// Auto-collapse exists for a crowded built-in (notched) menu bar. Once an external monitor is
+    /// attached it may be the main display, so nothing is collapsed on the user's behalf.
+    public static func autoCollapseAllowed(displayIsBuiltIn: [Bool]) -> Bool {
+        !displayIsBuiltIn.isEmpty && displayIsBuiltIn.allSatisfy { $0 }
+    }
+
     /// Positions content widths left to right inside one status item.
     public static func layout(widths: [CGFloat]) -> (offsets: [CGFloat], total: CGFloat) {
         guard !widths.isEmpty else { return ([], 0) }

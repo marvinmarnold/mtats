@@ -71,3 +71,18 @@ final class MenuBarFitTests: XCTestCase {
         XCTAssertLessThan(combined, separate, "combining must take less room than separate items")
     }
 }
+
+final class AutoCollapsePolicyTests: XCTestCase {
+    // With a monitor attached it may be the main display; collapsing would squeeze it for the sake
+    // of a laptop screen that is barely looked at.
+    func test_allowed_onlyWhenEveryDisplayIsBuiltIn() {
+        XCTAssertTrue(MenuBarFit.autoCollapseAllowed(displayIsBuiltIn: [true]))
+        XCTAssertFalse(MenuBarFit.autoCollapseAllowed(displayIsBuiltIn: [true, false]))
+        XCTAssertFalse(MenuBarFit.autoCollapseAllowed(displayIsBuiltIn: [false]))
+        XCTAssertFalse(MenuBarFit.autoCollapseAllowed(displayIsBuiltIn: [false, false]))
+    }
+
+    func test_allowed_whenThereAreNoDisplaysToJudge_isFalse() {
+        XCTAssertFalse(MenuBarFit.autoCollapseAllowed(displayIsBuiltIn: []))
+    }
+}
